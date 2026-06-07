@@ -1,0 +1,216 @@
+import tkinter as tk
+from tkinter import scrolledtext, messagebox
+import datetime
+import webbrowser
+import os
+import speech_recognition as sr
+import pyttsx3
+import threading
+
+class DasyorAI:
+
+    def __init__(self, root):
+        self.root = root
+        self.root.title("🤖 Dasyor AI")
+        self.root.geometry("850x650")
+
+        self.engine = pyttsx3.init()
+
+        title = tk.Label(
+            root,
+            text="🤖 DASYOR AI",
+            font=("Arial", 24, "bold")
+        )
+        title.pack(pady=10)
+
+        self.chat = scrolledtext.ScrolledText(
+            root,
+            width=95,
+            height=25
+        )
+        self.chat.pack(padx=10, pady=10)
+
+        self.entry = tk.Entry(
+            root,
+            font=("Arial", 12)
+        )
+        self.entry.pack(fill="x", padx=10, pady=5)
+
+        self.entry.bind("<Return>", self.send_message)
+
+        btn_frame = tk.Frame(root)
+        btn_frame.pack(pady=5)
+
+        tk.Button(
+            btn_frame,
+            text="Yuborish",
+            command=self.send_message,
+            width=15
+        ).grid(row=0, column=0, padx=5)
+
+        tk.Button(
+            btn_frame,
+            text="🎤 Mikrofon",
+            command=self.start_microphone,
+            width=15
+        ).grid(row=0, column=1, padx=5)
+
+        tk.Button(
+            btn_frame,
+            text="Yordam",
+            command=self.show_help,
+            width=15
+        ).grid(row=0, column=2, padx=5)
+
+        self.bot_reply("Salom! Men Dasyor AI.")
+
+    def speak(self, text):
+        try:
+            self.engine.say(text)
+            self.engine.runAndWait()
+        except:
+            pass
+
+    def bot_reply(self, text):
+        self.chat.insert(
+            tk.END,
+            f"\n🤖 Dasyor: {text}\n"
+        )
+        self.chat.see(tk.END)
+
+        threading.Thread(
+            target=self.speak,
+            args=(text,),
+            daemon=True
+        ).start()
+
+    def user_message(self, text):
+        self.chat.insert(
+            tk.END,
+            f"\n👤 Siz: {text}\n"
+        )
+        self.chat.see(tk.END)
+
+    def send_message(self, event=None):
+        msg = self.entry.get().strip()
+
+        if not msg:
+            return
+
+        self.user_message(msg)
+
+        self.entry.delete(0, tk.END)
+
+        self.process_command(msg)
+
+    def start_microphone(self):
+        threading.Thread(
+            target=self.listen_microphone,
+            daemon=True
+        ).start()
+
+    def listen_microphone(self):
+        try:
+            r = sr.Recognizer()
+
+            self.bot_reply("Gapiring, tinglayapman...")
+
+            with sr.Microphone() as source:
+                r.adjust_for_ambient_noise(source)
+                audio = r.listen(source)
+
+            text = r.recognize_google(
+                audio,
+                language="uz-UZ"
+            )
+
+            self.entry.delete(0, tk.END)
+            self.entry.insert(0, text)
+
+            self.user_message(text)
+
+            self.process_command(text)
+
+        except Exception:
+            self.bot_reply("Mikrofondan ovoz olinmadi.")
+
+    def process_command(self, msg):
+
+        text = msg.lower()
+
+        if text == "salom":
+            self.bot_reply(
+                "Salom, qanday yordam beray?"
+            )
+
+        elif text == "vaqt":
+            now = datetime.datetime.now()
+            self.bot_reply(
+                now.strftime("%Y-%m-%d %H:%M:%S")
+            )
+
+        elif text.startswith("google"):
+
+            q = text.replace(
+                "google",
+                ""
+            ).strip()
+
+            if q:
+                webbrowser.open(
+                    f"https://www.google.com/search?q={q}"
+                )
+
+                self.bot_reply(
+                    f"Google qidiruv ochildi: {q}"
+                )
+
+        elif text.startswith("papka"):
+
+            nom = text.replace(
+                "papka",
+                ""
+            ).strip()
+
+            if nom:
+                os.makedirs(
+                    nom,
+                    exist_ok=True
+                )
+
+                self.bot_reply(
+                    f"Papka yaratildi: {nom}"
+                )
+
+        elif text.startswith("hisob"):
+
+            try:
+                expr = text.replace(
+                    "hisob",
+                    ""
+                ).strip()
+
+                natija = eval(
+                    expr,
+                    {"__builtins__": None},
+                    {}
+                )
+
+                self.bot_reply(
+                    f"Natija: {natija}"
+                )
+
+            except:
+                self.bot_reply(
+                    "Hisoblashda xatolik."
+                )
+
+        elif text == "chiqish":
+            self.root.destroy()
+
+        else:
+            self.bot_reply(
+                "Buyruq tushunilmadi."
+            )
+
+    def show_help(self):
