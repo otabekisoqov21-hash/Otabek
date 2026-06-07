@@ -1,0 +1,189 @@
+import tkinter as tk
+from tkinter import scrolledtext, messagebox
+import datetime
+import webbrowser
+import os
+import threading
+import pyttsx3
+import speech_recognition as sr
+
+
+# ======================
+#  DASYOR 2.0 CLASS
+# ======================
+
+class DasyorAI:
+
+    def __init__(self, root):
+        self.root = root
+        self.root.title("🤖 DASYOR AI 2.0")
+        self.root.geometry("900x650")
+        self.root.configure(bg="#1e1e1e")
+
+        # Ovoz engine
+        self.engine = pyttsx3.init()
+
+        # Title
+        title = tk.Label(
+            root,
+            text="🤖 DASYOR AI 2.0",
+            font=("Arial", 24, "bold"),
+            bg="#1e1e1e",
+            fg="cyan"
+        )
+        title.pack(pady=10)
+
+        # Chat
+        self.chat = scrolledtext.ScrolledText(
+            root,
+            width=100,
+            height=25,
+            bg="#0f0f0f",
+            fg="white",
+            font=("Consolas", 11)
+        )
+        self.chat.pack(padx=10, pady=10)
+
+        # Input
+        self.entry = tk.Entry(
+            root,
+            font=("Arial", 12)
+        )
+        self.entry.pack(fill="x", padx=10, pady=5)
+        self.entry.bind("<Return>", self.send_message)
+
+        # Buttons
+        btn_frame = tk.Frame(root, bg="#1e1e1e")
+        btn_frame.pack()
+
+        tk.Button(btn_frame, text="Yuborish", command=self.send_message, width=12).grid(row=0, column=0, padx=5)
+        tk.Button(btn_frame, text="🎤 Mikrofon", command=self.microphone, width=12).grid(row=0, column=1, padx=5)
+        tk.Button(btn_frame, text="Yordam", command=self.help, width=12).grid(row=0, column=2, padx=5)
+
+        self.say("Salom! Men Dasyor 2.0 tayyorman 🚀")
+
+    # ======================
+    # OVOZ
+    # ======================
+    def say(self, text):
+        self.engine.say(text)
+        self.engine.runAndWait()
+
+    def bot(self, text):
+        self.chat.insert(tk.END, f"\n🤖 Dasyor: {text}\n")
+        self.chat.see(tk.END)
+        threading.Thread(target=self.say, args=(text,), daemon=True).start()
+
+    def user(self, text):
+        self.chat.insert(tk.END, f"\n👤 Siz: {text}\n")
+        self.chat.see(tk.END)
+
+    # ======================
+    # SEND MESSAGE
+    # ======================
+    def send_message(self, event=None):
+        msg = self.entry.get().strip()
+        if not msg:
+            return
+
+        self.user(msg)
+        self.entry.delete(0, tk.END)
+        self.process(msg.lower())
+
+    # ======================
+    # MICROPHONE
+    # ======================
+    def microphone(self):
+        threading.Thread(target=self.listen, daemon=True).start()
+
+    def listen(self):
+        try:
+            r = sr.Recognizer()
+            with sr.Microphone() as source:
+                self.bot("Gapiring... 🎤")
+                audio = r.listen(source)
+
+            text = r.recognize_google(audio, language="uz-UZ")
+
+            self.entry.delete(0, tk.END)
+            self.entry.insert(0, text)
+            self.process(text.lower())
+
+        except:
+            self.bot("Mikrofon ishlamadi ❌")
+
+    # ======================
+    # COMMANDS
+    # ======================
+    def process(self, msg):
+
+        # salom
+        if "salom" in msg:
+            self.bot("Salom 👋 qanday yordam beray?")
+
+        # vaqt
+        elif "vaqt" in msg:
+            now = datetime.datetime.now()
+            self.bot(now.strftime("%Y-%m-%d %H:%M:%S"))
+
+        # google
+        elif msg.startswith("google"):
+            q = msg.replace("google", "").strip()
+            if q:
+                webbrowser.open(f"https://www.google.com/search?q={q}")
+                self.bot(f"Google ochildi: {q}")
+
+        # youtube
+        elif msg.startswith("youtube"):
+            q = msg.replace("youtube", "").strip()
+            webbrowser.open(f"https://www.youtube.com/results?search_query={q}")
+            self.bot(f"YouTube: {q}")
+
+        # papka
+        elif msg.startswith("papka"):
+            name = msg.replace("papka", "").strip()
+            if name:
+                os.makedirs(name, exist_ok=True)
+                self.bot(f"Papka yaratildi: {name}")
+
+        # hisob
+        elif msg.startswith("hisob"):
+            try:
+                expr = msg.replace("hisob", "").strip()
+                result = eval(expr, {"__builtins__": None}, {})
+                self.bot(f"Natija: {result}")
+            except:
+                self.bot("Hisob xato ❌")
+
+        # chiqish
+        elif "chiqish" in msg:
+            self.bot("Xayr 👋")
+            self.root.destroy()
+
+        else:
+            self.bot("Buyruq topilmadi 🤔")
+
+    # ======================
+    # HELP
+    # ======================
+    def help(self):
+        messagebox.showinfo(
+            "Dasyor 2.0 Help",
+            "Buyruqlar:\n"
+            "- salom\n"
+            "- vaqt\n"
+            "- google python\n"
+            "- youtube music\n"
+            "- papka test\n"
+            "- hisob 5+5\n"
+            "- chiqish"
+        )
+
+
+# ======================
+# RUN APP
+# ======================
+
+root = tk.Tk()
+app = DasyorAI(root)
+root.mainloop()
