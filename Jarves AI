@@ -1,0 +1,124 @@
+import tkinter as tk
+from tkinter import scrolledtext
+import speech_recognition as sr
+import pyttsx3
+import threading
+import webbrowser
+import datetime
+import os
+
+engine = pyttsx3.init()
+
+def speak(text):
+    chat.insert(tk.END, f"\nDasyor: {text}\n")
+    chat.see(tk.END)
+
+    engine.say(text)
+    engine.runAndWait()
+
+def listen():
+    r = sr.Recognizer()
+
+    try:
+        with sr.Microphone() as source:
+            speak("Eshitayapman")
+            r.adjust_for_ambient_noise(source)
+            audio = r.listen(source)
+
+        text = r.recognize_google(audio, language="uz-UZ")
+
+        chat.insert(tk.END, f"\nSiz: {text}\n")
+        chat.see(tk.END)
+
+        return text.lower()
+
+    except Exception:
+        return ""
+
+def process_command(cmd):
+
+    if "salom" in cmd:
+        speak("Salom Otabek")
+
+    elif "youtube" in cmd:
+        webbrowser.open("https://youtube.com")
+        speak("YouTube ochildi")
+
+    elif "google" in cmd:
+        webbrowser.open("https://google.com")
+        speak("Google ochildi")
+
+    elif "telegram" in cmd:
+        webbrowser.open("https://web.telegram.org")
+        speak("Telegram ochildi")
+
+    elif "soat" in cmd:
+        now = datetime.datetime.now().strftime("%H:%M")
+        speak(now)
+
+    elif "papka yarat" in cmd:
+        os.makedirs("YangiPapka", exist_ok=True)
+        speak("Papka yaratildi")
+
+    elif "fayl yarat" in cmd:
+        with open("test.txt","w") as f:
+            f.write("Dasyor AI")
+        speak("Fayl yaratildi")
+
+    elif "kalkulyator kodi yoz" in cmd:
+
+        code = '''
+import tkinter as tk
+
+root = tk.Tk()
+
+e = tk.Entry(root)
+e.pack()
+
+def calc():
+    try:
+        natija.config(text=str(eval(e.get())))
+    except:
+        natija.config(text="Xato")
+
+tk.Button(root,text="=",command=calc).pack()
+
+natija = tk.Label(root,text="")
+natija.pack()
+
+root.mainloop()
+'''
+
+        with open("calculator.py","w",encoding="utf-8") as f:
+            f.write(code)
+
+        speak("Calculator kodi yozildi")
+
+    else:
+        speak("Bu buyruq mavjud emas")
+
+def voice_thread():
+    cmd = listen()
+
+    if cmd:
+        process_command(cmd)
+
+def start_voice():
+    threading.Thread(target=voice_thread).start()
+
+root = tk.Tk()
+root.title("Dasyor AI 10.0")
+root.geometry("800x600")
+
+chat = scrolledtext.ScrolledText(root)
+chat.pack(fill="both", expand=True)
+
+tk.Button(
+    root,
+    text="🎤 Mikrofon",
+    command=start_voice
+).pack()
+
+speak("Dasyor AI 10.0 ishga tushdi")
+
+root.mainloop()
