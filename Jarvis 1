@@ -1,0 +1,309 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+"""
+JARVIS AI 10.0
+Developer: Otabek
+Version : 10.0
+"""
+
+import os
+import sys
+import json
+import time
+import shutil
+import psutil
+import socket
+import threading
+import subprocess
+import platform
+import requests
+import datetime
+import speech_recognition as sr
+import pyttsx3
+
+VERSION = "10.0"
+
+WORKSPACE = "JarvisFiles"
+DATA = "jarvis_data.json"
+LOG = "jarvis.log"
+
+os.makedirs(WORKSPACE, exist_ok=True)
+
+engine = pyttsx3.init()
+engine.setProperty("rate",170)
+
+class Jarvis:
+
+    def __init__(self):
+
+        self.data=self.load()
+
+        self.speak("JARVIS 10.0 ishga tushdi")
+
+    def load(self):
+
+        if os.path.exists(DATA):
+
+            with open(DATA,"r",encoding="utf8") as f:
+
+                return json.load(f)
+
+        return {
+
+            "chat":[],
+
+            "notes":[],
+
+            "tasks":[]
+
+        }
+
+    def save(self):
+
+        with open(DATA,"w",encoding="utf8") as f:
+
+            json.dump(self.data,f,indent=4,ensure_ascii=False)
+
+    def speak(self,text):
+
+        print("JARVIS >",text)
+
+        engine.say(text)
+
+        engine.runAndWait()
+
+    def listen(self):
+
+        r=sr.Recognizer()
+
+        with sr.Microphone() as mic:
+
+            print("Gapiring...")
+
+            audio=r.listen(mic)
+
+        try:
+
+            text=r.recognize_google(audio,language="uz-UZ")
+
+            print("Siz >",text)
+
+            return text.lower()
+
+        except:
+
+            return ""
+
+    def system_info(self):
+
+        print("="*40)
+
+        print("Windows :",platform.platform())
+
+        print("Python :",platform.python_version())
+
+        print("CPU :",platform.processor())
+
+        print("RAM :",round(psutil.virtual_memory().total/1024/1024/1024,2),"GB")
+
+        print("="*40)
+
+    def disk(self):
+
+        d=psutil.disk_usage("/")
+
+        print("Disk:",d.percent,"%")
+
+    def ip(self):
+
+        print(socket.gethostbyname(socket.gethostname()))
+
+    def create_file(self,name,text):
+
+        path=os.path.join(WORKSPACE,name)
+
+        with open(path,"w",encoding="utf8") as f:
+
+            f.write(text)
+
+        self.speak("Fayl saqlandi")
+
+    def open_file(self,name):
+
+        path=os.path.join(WORKSPACE,name)
+
+        if os.path.exists(path):
+
+            with open(path,"r",encoding="utf8") as f:
+
+                print(f.read())
+
+        else:
+
+            self.speak("Fayl topilmadi")
+
+    def note(self,text):
+
+        self.data["notes"].append(text)
+
+        self.save()
+
+        self.speak("Eslatma saqlandi")
+
+    def task(self,text):
+
+        self.data["tasks"].append(
+
+            {
+
+                "task":text,
+
+                "done":False
+
+            }
+
+        )
+
+        self.save()
+
+        self.speak("Vazifa qo'shildi")# ========= JARVIS 10.0 - 2-QISM =========
+
+    def search_google(self, query):
+        import webbrowser
+
+        url = "https://www.google.com/search?q=" + query.replace(" ", "+")
+        webbrowser.open(url)
+        self.speak("Google qidiruvi ochildi.")
+
+    def run_cmd(self, cmd):
+        try:
+            os.system(cmd)
+        except Exception as e:
+            print(e)
+
+    def python_code(self, prompt):
+
+        api = os.getenv("OPENAI_API_KEY")
+
+        if api == "":
+            self.speak("API kalit topilmadi")
+            return
+
+        headers = {
+            "Authorization": f"Bearer {api}",
+            "Content-Type": "application/json"
+        }
+
+        data = {
+            "model": "gpt-4.1",
+            "messages": [
+                {
+                    "role":"system",
+                    "content":"Faqat Python kod yoz."
+                },
+                {
+                    "role":"user",
+                    "content":prompt
+                }
+            ]
+        }
+
+        r = requests.post(
+            "https://api.openai.com/v1/chat/completions",
+            headers=headers,
+            json=data
+        )
+
+        code = r.json()["choices"][0]["message"]["content"]
+
+        filename = "ai_code.py"
+
+        with open(filename,"w",encoding="utf8") as f:
+            f.write(code)
+
+        self.speak("Kod yozildi.")
+
+    def telegram_bot(self,name):
+
+        text=f"""
+from aiogram import Bot,Dispatcher
+import asyncio
+
+TOKEN="TOKEN"
+
+bot=Bot(TOKEN)
+
+dp=Dispatcher()
+
+async def main():
+    await dp.start_polling(bot)
+
+asyncio.run(main())
+"""
+
+        with open(name+".py","w",encoding="utf8") as f:
+            f.write(text)
+
+        self.speak("Telegram bot yaratildi.")
+
+    def menu(self):
+
+        while True:
+
+            cmd=input(">>> ").lower()
+
+            if cmd=="exit":
+                break
+
+            elif cmd=="info":
+                self.system_info()
+
+            elif cmd=="disk":
+                self.disk()
+
+            elif cmd=="ip":
+                self.ip()
+
+            elif cmd.startswith("google "):
+                self.search_google(cmd[7:])
+
+            elif cmd.startswith("cmd "):
+                self.run_cmd(cmd[4:])
+
+            elif cmd.startswith("note "):
+                self.note(cmd[5:])
+
+            elif cmd.startswith("task "):
+                self.task(cmd[5:])
+
+            elif cmd.startswith("create "):
+
+                name=input("Fayl nomi: ")
+
+                text=input("Matn: ")
+
+                self.create_file(name,text)
+
+            elif cmd.startswith("open "):
+
+                self.open_file(cmd[5:])
+
+            elif cmd.startswith("python "):
+
+                self.python_code(cmd[7:])
+
+            elif cmd.startswith("bot "):
+
+                self.telegram_bot(cmd[4:])
+
+            else:
+
+                self.speak("Buyruq topilmadi")
+
+
+if __name__=="__main__":
+
+    j=Jarvis()
+
+    j.menu()
