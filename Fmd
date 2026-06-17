@@ -1,0 +1,632 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+"""
+JARVIS AI 10.0
+Developer: Otabek
+Version : 10.0
+"""
+
+import os
+import sys
+import json
+import time
+import shutil
+import psutil
+import socket
+import threading
+import subprocess
+import platform
+import requests
+import datetime
+import speech_recognition as sr
+import pyttsx3
+
+VERSION = "10.0"
+
+WORKSPACE = "JarvisFiles"
+DATA = "jarvis_data.json"
+LOG = "jarvis.log"
+
+os.makedirs(WORKSPACE, exist_ok=True)
+
+engine = pyttsx3.init()
+engine.setProperty("rate",170)
+
+class Jarvis:
+
+    def __init__(self):
+
+        self.data=self.load()
+
+        self.speak("JARVIS 10.0 ishga tushdi")
+
+    def load(self):
+
+        if os.path.exists(DATA):
+
+            with open(DATA,"r",encoding="utf8") as f:
+
+                return json.load(f)
+
+        return {
+
+            "chat":[],
+
+            "notes":[],
+
+            "tasks":[]
+
+        }
+
+    def save(self):
+
+        with open(DATA,"w",encoding="utf8") as f:
+
+            json.dump(self.data,f,indent=4,ensure_ascii=False)
+
+    def speak(self,text):
+
+        print("JARVIS >",text)
+
+        engine.say(text)
+
+        engine.runAndWait()
+
+    def listen(self):
+
+        r=sr.Recognizer()
+
+        with sr.Microphone() as mic:
+
+            print("Gapiring...")
+
+            audio=r.listen(mic)
+
+        try:
+
+            text=r.recognize_google(audio,language="uz-UZ")
+
+            print("Siz >",text)
+
+            return text.lower()
+
+        except:
+
+            return ""
+
+    def system_info(self):
+
+        print("="*40)
+
+        print("Windows :",platform.platform())
+
+        print("Python :",platform.python_version())
+
+        print("CPU :",platform.processor())
+
+        print("RAM :",round(psutil.virtual_memory().total/1024/1024/1024,2),"GB")
+
+        print("="*40)
+
+    def disk(self):
+
+        d=psutil.disk_usage("/")
+
+        print("Disk:",d.percent,"%")
+
+    def ip(self):
+
+        print(socket.gethostbyname(socket.gethostname()))
+
+    def create_file(self,name,text):
+
+        path=os.path.join(WORKSPACE,name)
+
+        with open(path,"w",encoding="utf8") as f:
+
+            f.write(text)
+
+        self.speak("Fayl saqlandi")
+
+    def open_file(self,name):
+
+        path=os.path.join(WORKSPACE,name)
+
+        if os.path.exists(path):
+
+            with open(path,"r",encoding="utf8") as f:
+
+                print(f.read())
+
+        else:
+
+            self.speak("Fayl topilmadi")
+
+    def note(self,text):
+
+        self.data["notes"].append(text)
+
+        self.save()
+
+        self.speak("Eslatma saqlandi")
+
+    def task(self,text):
+
+        self.data["tasks"].append(
+
+            {
+
+                "task":text,
+
+                "done":False
+
+            }
+
+        )
+
+        self.save()
+
+        self.speak("Vazifa qo'shildi")# ========= JARVIS 10.0 - 2-QISM =========
+
+    def search_google(self, query):
+        import webbrowser
+
+        url = "https://www.google.com/search?q=" + query.replace(" ", "+")
+        webbrowser.open(url)
+        self.speak("Google qidiruvi ochildi.")
+
+    def run_cmd(self, cmd):
+        try:
+            os.system(cmd)
+        except Exception as e:
+            print(e)
+
+    def python_code(self, prompt):
+
+        api = os.getenv("OPENAI_API_KEY")
+
+        if api == "":
+            self.speak("API kalit topilmadi")
+            return
+
+        headers = {
+            "Authorization": f"Bearer {api}",
+            "Content-Type": "application/json"
+        }
+
+        data = {
+            "model": "gpt-4.1",
+            "messages": [
+                {
+                    "role":"system",
+                    "content":"Faqat Python kod yoz."
+                },
+                {
+                    "role":"user",
+                    "content":prompt
+                }
+            ]
+        }
+
+        r = requests.post(
+            "https://api.openai.com/v1/chat/completions",
+            headers=headers,
+            json=data
+        )
+
+        code = r.json()["choices"][0]["message"]["content"]
+
+        filename = "ai_code.py"
+
+        with open(filename,"w",encoding="utf8") as f:
+            f.write(code)
+
+        self.speak("Kod yozildi.")
+
+    def telegram_bot(self,name):
+
+        text=f"""
+from aiogram import Bot,Dispatcher
+import asyncio
+
+TOKEN="TOKEN"
+
+bot=Bot(TOKEN)
+
+dp=Dispatcher()
+
+async def main():
+    await dp.start_polling(bot)
+
+asyncio.run(main())
+"""
+
+        with open(name+".py","w",encoding="utf8") as f:
+            f.write(text)
+
+        self.speak("Telegram bot yaratildi.")
+
+    def menu(self):
+
+        while True:
+
+            cmd=input(">>> ").lower()
+
+            if cmd=="exit":
+                break
+
+            elif cmd=="info":
+                self.system_info()
+
+            elif cmd=="disk":
+                self.disk()
+
+            elif cmd=="ip":
+                self.ip()
+
+            elif cmd.startswith("google "):
+                self.search_google(cmd[7:])
+
+            elif cmd.startswith("cmd "):
+                self.run_cmd(cmd[4:])
+
+            elif cmd.startswith("note "):
+                self.note(cmd[5:])
+
+            elif cmd.startswith("task "):
+                self.task(cmd[5:])
+
+            elif cmd.startswith("create "):
+
+                name=input("Fayl nomi: ")
+
+                text=input("Matn: ")
+
+                self.create_file(name,text)
+
+            elif cmd.startswith("open "):
+
+                self.open_file(cmd[5:])
+
+            elif cmd.startswith("python "):
+
+                self.python_code(cmd[7:])
+
+            elif cmd.startswith("bot "):
+
+                self.telegram_bot(cmd[4:])
+
+            else:
+
+                self.speak("Buyruq topilmadi")
+
+
+if __name__=="__main__":
+
+    j=Jarvis()
+
+    j.menu()# ========= JARVIS 10.0 - 3-QISM =========
+
+    def ai_chat(self, prompt):
+
+        api = os.getenv("OPENAI_API_KEY")
+
+        if not api:
+            self.speak("API kalit topilmadi.")
+            return
+
+        headers = {
+            "Authorization": f"Bearer {api}",
+            "Content-Type": "application/json"
+        }
+
+        body = {
+            "model": "gpt-4.1",
+            "messages": [
+                {
+                    "role": "system",
+                    "content": "Sen JARVIS 10.0 yordamchisisan. Har doim o'zbek tilida javob ber."
+                },
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ]
+        }
+
+        try:
+
+            r = requests.post(
+                "https://api.openai.com/v1/chat/completions",
+                headers=headers,
+                json=body,
+                timeout=60
+            )
+
+            answer = r.json()["choices"][0]["message"]["content"]
+
+            print("\nJARVIS:\n")
+            print(answer)
+            print()
+
+            self.speak(answer)
+
+        except Exception as e:
+            print(e)
+
+    def run_python(self, filename):
+
+        if not os.path.exists(filename):
+            self.speak("Fayl topilmadi.")
+            return
+
+        subprocess.run(["python", filename])
+
+    def analyse_code(self, filename):
+
+        if not os.path.exists(filename):
+            self.speak("Fayl topilmadi.")
+            return
+
+        with open(filename, "r", encoding="utf8") as f:
+            code = f.read()
+
+        print("=" * 60)
+
+        if "except:" in code:
+            print("⚠ except: o'rniga except Exception ishlating.")
+
+        if "while True" in code:
+            print("⚠ while True cheksiz aylanishga olib kelishi mumkin.")
+
+        if "os.system" in code:
+            print("⚠ os.system o'rniga subprocess tavsiya qilinadi.")
+
+        if "eval(" in code:
+            print("❌ eval xavfsiz emas.")
+
+        if "exec(" in code:
+            print("❌ exec ishlatish tavsiya etilmaydi.")
+
+        print("✅ Kod tahlili tugadi.")
+
+        print("=" * 60)
+
+    def save_chat(self, text):
+
+        self.data["chat"].append(text)
+
+        self.save()
+
+    def history(self):
+
+        print()
+
+        for item in self.data["chat"]:
+            print(item)elif cmd.startswith("chat "):
+
+    self.ai_chat(cmd[5:])
+
+elif cmd.startswith("run "):
+
+    self.run_python(cmd[4:])
+
+elif cmd.startswith("analyse "):
+
+    self.analyse_code(cmd[8:])
+
+elif cmd == "history":
+
+    self.history()
+
+        print()# ============ JARVIS 10.0 - 4-QISM ============
+
+    def create_folder(self, name):
+
+        folder = os.path.join(WORKSPACE, name)
+
+        os.makedirs(folder, exist_ok=True)
+
+        self.speak("Papka yaratildi.")
+
+    def delete_file(self, filename):
+
+        path = os.path.join(WORKSPACE, filename)
+
+        if os.path.exists(path):
+
+            os.remove(path)
+
+            self.speak("Fayl o'chirildi.")
+
+        else:
+
+            self.speak("Fayl topilmadi.")
+
+    def python_project(self, name):
+
+        folder = os.path.join(WORKSPACE, name)
+
+        os.makedirs(folder, exist_ok=True)
+
+        with open(os.path.join(folder, "main.py"), "w", encoding="utf8") as f:
+
+            f.write("""print("Salom Dunyo")""")
+
+        with open(os.path.join(folder, "README.md"), "w", encoding="utf8") as f:
+
+            f.write("# Python Project")
+
+        self.speak("Python loyiha yaratildi.")
+
+    def telegram_project(self, name):
+
+        folder = os.path.join(WORKSPACE, name)
+
+        os.makedirs(folder, exist_ok=True)
+
+        bot = '''
+from aiogram import Bot, Dispatcher
+import asyncio
+
+TOKEN="TOKEN"
+
+bot=Bot(TOKEN)
+
+dp=Dispatcher()
+
+async def main():
+    await dp.start_polling(bot)
+
+if __name__=="__main__":
+    asyncio.run(main())
+'''
+
+        with open(os.path.join(folder, "bot.py"), "w", encoding="utf8") as f:
+
+            f.write(bot)
+
+        with open(os.path.join(folder, "requirements.txt"), "w") as f:
+
+            f.write("aiogram\n")
+
+        self.speak("Telegram Bot yaratildi.")
+
+    def list_files(self):
+
+        print()
+
+        for file in os.listdir(WORKSPACE):
+
+            print(file)
+
+        print()
+
+    def open_workspace(self):
+
+        if platform.system() == "Windows":
+
+            os.startfile(WORKSPACE)
+
+        elif platform.system() == "Linux":
+
+            subprocess.Popen(["xdg-open", WORKSPACE])
+
+        else:elif cmd.startswith("folder "):
+
+    self.create_folder(cmd[7:])
+
+elif cmd.startswith("delete "):
+
+    self.delete_file(cmd[7:])
+
+elif cmd.startswith("project "):
+
+    self.python_project(cmd[8:])
+
+elif cmd.startswith("telegram "):
+
+    self.telegram_project(cmd[9:])
+
+elif cmd == "files":
+
+    self.list_files()
+
+elif cmd == "workspace":
+
+    self.open_workspace()
+
+            subprocess.Popen(["open", WORKSPACE])# ========== JARVIS 10.0 - 5-QISM ==========
+
+    def install_package(self, package):
+
+        self.speak(package + " o'rnatilmoqda")
+
+        subprocess.run(
+            [sys.executable, "-m", "pip", "install", package]
+        )
+
+        self.speak("O'rnatish tugadi")
+
+    def update_pip(self):
+
+        subprocess.run(
+            [sys.executable, "-m", "pip", "install", "--upgrade", "pip"]
+        )
+
+        self.speak("PIP yangilandi")
+
+    def github_clone(self, url):
+
+        if shutil.which("git") is None:
+
+            self.speak("Git o'rnatilmagan")
+
+            return
+
+        subprocess.run(["git", "clone", url])
+
+        self.speak("GitHub loyihasi yuklandi")
+
+    def create_python_file(self, filename):
+
+        path = os.path.join(WORKSPACE, filename)
+
+        if not filename.endswith(".py"):
+            path += ".py"
+
+        with open(path, "w", encoding="utf8") as f:
+
+            f.write("""# Python File
+
+def main():
+
+    print("Salom Dunyo")
+
+if __name__=="__main__":
+
+    main()
+""")
+
+        self.speak("Python fayl yaratildi")
+
+    def check_python(self):
+
+        print("=" * 50)
+
+        print("Python :", platform.python_version())
+
+        print("Python EXE :", sys.executable)
+
+        print("Platform :", platform.platform())
+
+        print("=" * 50)
+
+    def requirements(self):
+
+        subprocess.run(
+            [sys.executable, "-m", "pip", "freeze"]
+        )elif cmd.startswith("pip "):
+
+    self.install_package(cmd[4:])
+
+elif cmd == "update pip":
+
+    self.update_pip()
+
+elif cmd.startswith("clone "):
+
+    self.github_clone(cmd[6:])
+
+elif cmd.startswith("newpy "):
+
+    self.create_python_file(cmd[6:])
+
+elif cmd == "python":
+
+    self.check_python()
+
+elif cmd == "freeze":
+
+    self.requirements()
