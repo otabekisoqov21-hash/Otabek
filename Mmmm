@@ -1,0 +1,688 @@
+ Pay 2
+# ==========================================
+# 11-QISM
+# TELEGRAM BOT GENERATOR
+# ==========================================
+
+def create_telegram_bot(self, bot_name):
+
+    if not bot_name:
+        bot_name = "MyBot"
+
+    folder = os.path.join(self.workspace, bot_name)
+
+    os.makedirs(folder, exist_ok=True)
+
+    main_code = '''from telegram import Update
+from telegram.ext import (
+ApplicationBuilder,
+CommandHandler,
+MessageHandler,
+ContextTypes,
+filters
+)
+
+TOKEN="YOUR_BOT_TOKEN"
+
+async def start(update:Update,
+context:ContextTypes.DEFAULT_TYPE):
+
+    await update.message.reply_text(
+        "Assalomu alaykum!"
+    )
+
+async def help(update:Update,
+context:ContextTypes.DEFAULT_TYPE):
+
+    await update.message.reply_text(
+        "Yordam menyusi"
+    )
+
+async def echo(update:Update,
+context:ContextTypes.DEFAULT_TYPE):
+
+    await update.message.reply_text(
+        update.message.text
+    )
+
+app=ApplicationBuilder().token(TOKEN).build()
+
+app.add_handler(CommandHandler("start",start))
+app.add_handler(CommandHandler("help",help))
+app.add_handler(
+MessageHandler(
+filters.TEXT & ~filters.COMMAND,
+echo
+)
+)
+
+app.run_polling()
+'''
+
+    with open(
+        os.path.join(folder, "main.py"),
+        "w",
+        encoding="utf-8"
+    ) as f:
+        f.write(main_code)
+
+    with open(
+        os.path.join(folder, "requirements.txt"),
+        "w",
+        encoding="utf-8"
+    ) as f:
+        f.write("python-telegram-bot==20.7\n")
+
+    with open(
+        os.path.join(folder, "README.md"),
+        "w",
+        encoding="utf-8"
+    ) as f:
+        f.write("# Telegram Bot\n\n")
+        f.write("1. requirements.txt ni o'rnating\n")
+        f.write("2. TOKEN ni almashtiring\n")
+        f.write("3. python main.py ni ishga tushiring\n")
+
+    self.speak("Telegram bot yaratildi.")
+
+
+def install_bot_packages(self):
+
+    subprocess.run([
+        sys.executable,
+        "-m",
+        "pip",
+        "install",
+        "python-telegram-bot"
+    ])
+
+    self.speak("Kutubxonalar o'rnatildi.")
+
+
+def run_bot(self, folder):
+
+    path = os.path.join(
+        self.workspace,
+        folder,
+        "main.py"
+    )
+
+    if os.path.exists(path):
+
+        subprocess.run([
+            sys.executable,
+            path
+        ])
+
+    else:
+
+        self.speak("Bot topilmadi.")
+
+
+def bot_info(self):
+
+    print("=" * 40)
+    print("Telegram Bot Generator")
+    print("Versiya : 10.0")
+    print("Developer : Otabek")
+    print("=" * 40)
+# ==========================================
+# 12-QISM
+# ESLATMA VA VAZIFALAR (TASK MANAGER)
+# ==========================================
+
+def add_note(self, text):
+
+    if not text:
+        self.speak("Eslatma matni yo'q.")
+        return
+
+    self.data["notes"].append({
+        "text": text,
+        "time": str(datetime.datetime.now())
+    })
+
+    self.save_data()
+
+    self.speak("Eslatma qo'shildi.")
+
+
+def show_notes(self):
+
+    notes = self.data.get("notes", [])
+
+    if not notes:
+        self.speak("Eslatmalar yo'q.")
+        return
+
+    print("\n===== ESALTMALAR =====")
+
+    for i, n in enumerate(notes, 1):
+        print(f"{i}. {n['text']} ({n['time']})")
+
+
+def delete_note(self, index):
+
+    try:
+
+        self.data["notes"].pop(index - 1)
+
+        self.save_data()
+
+        self.speak("Eslatma o'chirildi.")
+
+    except:
+
+        self.speak("Xato index.")
+
+
+def add_task(self, task):
+
+    if not task:
+        self.speak("Vazifa yo'q.")
+        return
+
+    self.data["tasks"].append({
+        "task": task,
+        "done": False,
+        "time": str(datetime.datetime.now())
+    })
+
+    self.save_data()
+
+    self.speak("Vazifa qo'shildi.")
+
+
+def show_tasks(self):
+
+    tasks = self.data.get("tasks", [])
+
+    if not tasks:
+        self.speak("Vazifalar yo'q.")
+        return
+
+    print("\n===== VAZIFALAR =====")
+
+    for i, t in enumerate(tasks, 1):
+
+        status = "✔" if t["done"] else "✖"
+
+        print(f"{i}. {t['task']} [{status}]")
+
+
+def done_task(self, index):
+
+    try:
+
+        self.data["tasks"][index - 1]["done"] = True
+
+        self.save_data()
+
+        self.speak("Vazifa bajarildi.")
+
+    except:
+
+        self.speak("Xato index.")
+
+
+def delete_task(self, index):
+
+    try:
+
+        self.data["tasks"].pop(index - 1)
+
+        self.save_data()
+
+        self.speak("Vazifa o'chirildi.")
+
+    except:
+
+        self.speak("Xato index.")
+
+
+def clear_all(self):
+
+    self.data["notes"] = []
+    self.data["tasks"] = []
+
+    self.save_data()
+
+    self.speak("Hammasi tozalandi.")
+
+
+def reminder_loop(self):
+
+    while True:
+
+        time.sleep(10)
+
+        if self.data["tasks"]:
+
+            for t in self.data["tasks"]:
+
+                if not t["done"]:
+
+                    print("⏰ Eslatma:", t["task"])
+# ==========================================
+# 13-QISM
+# PLUGIN TIZIMI
+# ==========================================
+
+def load_plugins(self):
+
+    self.plugins = {}
+
+    plugin_folder = os.path.join(self.workspace, "plugins")
+
+    os.makedirs(plugin_folder, exist_ok=True)
+
+    for file in os.listdir(plugin_folder):
+
+        if file.endswith(".py"):
+
+            try:
+                path = os.path.join(plugin_folder, file)
+
+                with open(path, "r", encoding="utf-8") as f:
+                    code = f.read()
+
+                local_vars = {}
+
+                exec(code, {}, local_vars)
+
+                self.plugins[file] = local_vars
+
+                self.speak(f"{file} plugin yuklandi.")
+
+            except Exception as e:
+                print("Plugin xato:", file, e)
+
+
+def run_plugin(self, name, function, *args):
+
+    try:
+
+        plugin = self.plugins.get(name)
+
+        if not plugin:
+            self.speak("Plugin topilmadi.")
+            return
+
+        func = plugin.get(function)
+
+        if not func:
+            self.speak("Funksiya topilmadi.")
+            return
+
+        return func(*args)
+
+    except Exception as e:
+        print(e)
+        self.speak("Plugin ishlamadi.")
+
+
+def create_plugin(self, name):
+
+    plugin_path = os.path.join(
+        self.workspace,
+        "plugins",
+        name + ".py"
+    )
+
+    os.makedirs(os.path.dirname(plugin_path), exist_ok=True)
+
+    code = f"""
+def run():
+    print("{name} plugin ishladi")
+
+def info():
+    return "Plugin: {name}"
+"""
+
+    with open(plugin_path, "w", encoding="utf-8") as f:
+        f.write(code)
+
+    self.speak("Plugin yaratildi.")
+
+
+def list_plugins(self):
+
+    plugin_folder = os.path.join(self.workspace, "plugins")
+
+    if not os.path.exists(plugin_folder):
+
+        self.speak("Plugin yo'q.")
+
+        return
+
+    files = os.listdir(plugin_folder)
+
+    print("\n===== PLUGINS =====")
+
+    for f in files:
+
+        print("-", f)
+
+
+def delete_plugin(self, name):
+
+    path = os.path.join(
+        self.workspace,
+        "plugins",
+        name
+    )
+
+    if os.path.exists(path):
+
+        os.remove(path)
+
+        self.speak("Plugin o'chirildi.")
+
+    else:
+
+        self.speak("Topilmadi.")
+
+
+def reload_plugins(self):
+
+    self.speak("Pluginlar yangilanmoqda...")
+
+    self.load_plugins()
+# ==========================================
+# 14-QISM
+# AUTO UPDATE TIZIMI
+# ==========================================
+
+def check_update(self):
+
+    try:
+
+        url = "https://example.com/jarvis/version.txt"
+
+        r = requests.get(url, timeout=10)
+
+        latest_version = r.text.strip()
+
+        current_version = self.version
+
+        print("Current:", current_version)
+        print("Latest :", latest_version)
+
+        if latest_version != current_version:
+
+            self.speak("Yangi versiya topildi.")
+
+            return latest_version
+
+        else:
+
+            self.speak("Sizda eng so'nggi versiya bor.")
+
+            return None
+
+    except Exception as e:
+
+        print(e)
+
+        self.speak("Yangilanish tekshirib bo'lmadi.")
+
+        return None
+
+
+def download_update(self, url):
+
+    try:
+
+        file_name = "jarvis_update.py"
+
+        path = os.path.join(self.workspace, file_name)
+
+        r = requests.get(url, stream=True, timeout=30)
+
+        with open(path, "wb") as f:
+
+            for chunk in r.iter_content(8192):
+
+                if chunk:
+                    f.write(chunk)
+
+        self.speak("Yangilanish yuklab olindi.")
+
+        return path
+
+    except Exception as e:
+
+        print(e)
+
+        self.speak("Yuklab olishda xato.")
+
+        return None
+
+
+def apply_update(self, file_path):
+
+    try:
+
+        if os.path.exists(file_path):
+
+            backup = self.workspace + "/backup.py"
+
+            shutil.copy2(__file__, backup)
+
+            shutil.copy2(file_path, __file__)
+
+            self.speak("Yangilanish o'rnatildi. Qayta ishga tushiring.")
+
+        else:
+
+            self.speak("Fayl topilmadi.")
+
+    except Exception as e:
+
+        print(e)
+
+        self.speak("Yangilashda xato.")
+
+
+def rollback_update(self):
+
+    try:
+
+        backup = self.workspace + "/backup.py"
+
+        if os.path.exists(backup):
+
+            shutil.copy2(backup, __file__)
+
+            self.speak("Oldingi versiya tiklandi.")
+
+        else:
+
+            self.speak("Backup yo'q.")
+
+    except Exception as e:
+
+        print(e)
+def ai_chat(self, text):
+
+    text = text.lower()
+
+    if "salom" in text:
+        return "Assalomu alaykum! Men JARVIS 10.0 sizga yordam berishga tayyorman."
+
+    elif "isming" in text:
+        return "Mening ismim JARVIS 10.0, men sizning shaxsiy yordamchingizman."
+
+    elif "nima qila olasan" in text:
+        return "Men fayl yarataman, kod yozaman, internetdan qidiraman va kompyuterni boshqaraman."
+
+    elif "vaqt" in text:
+        import datetime
+        return "Hozirgi vaqt: " + str(datetime.datetime.now())
+
+    else:
+        return "Kechirasiz, men bu savolni hali tushunmadim, lekin o‘rganayapman."
+# ==========================================
+# 15-QISM
+# BUYRUQLAR MARKAZI (BRAIN SYSTEM)
+# ==========================================
+
+def execute_command(self, cmd):
+
+    cmd = cmd.lower().strip()
+
+    if not cmd:
+        return
+
+    self.log("CMD: " + cmd)
+
+    # ======================
+    # SYSTEM BUYRUQLAR
+    # ======================
+    if cmd == "system":
+        self.system_info()
+
+    elif cmd == "battery":
+        self.battery_info()
+
+    elif cmd == "internet":
+        self.internet_test()
+
+    # ======================
+    # FILE BUYRUQLAR
+    # ======================
+    elif cmd.startswith("mkdir "):
+        self.create_folder(cmd[6:])
+
+    elif cmd.startswith("touch "):
+        self.create_file(cmd[6:])
+
+    elif cmd.startswith("read "):
+        self.read_file(cmd[5:])
+
+    elif cmd.startswith("del "):
+        self.delete_item(cmd[4:])
+
+    elif cmd.startswith("rename "):
+        parts = cmd.split(" ")
+        if len(parts) >= 3:
+            self.rename_item(parts[1], parts[2])
+
+    elif cmd == "files":
+        self.list_files()
+
+    elif cmd == "workspace":
+        self.open_workspace()
+
+    # ======================
+    # PYTHON BUYRUQLAR
+    # ======================
+    elif cmd.startswith("py "):
+        self.run_python(cmd[3:])
+
+    elif cmd.startswith("makepy "):
+        self.create_python_file(cmd[7:])
+
+    elif cmd.startswith("analyze "):
+        self.analyze_code(cmd[8:])
+
+    # ======================
+    # INTERNET
+    # ======================
+    elif cmd.startswith("google "):
+        self.google_search(cmd[7:])
+
+    elif cmd.startswith("youtube "):
+        self.youtube_search(cmd[8:])
+
+    elif cmd.startswith("github "):
+        self.github_search(cmd[7:])
+
+    elif cmd.startswith("download "):
+        self.download_file(cmd[9:])
+
+    # ======================
+    # CMD BUYRUQLAR
+    # ======================
+    elif cmd.startswith("cmd "):
+        self.run_cmd(cmd[4:])
+
+    elif cmd == "cmd":
+        self.open_cmd()
+
+    elif cmd == "powershell":
+        self.open_powershell()
+
+    elif cmd == "notepad":
+        self.open_notepad()
+
+    elif cmd == "calc":
+        self.open_calculator()
+
+    elif cmd == "paint":
+        self.open_paint()
+
+    elif cmd == "taskmgr":
+        self.open_task_manager()
+
+    # ======================
+    # AI
+    # ======================
+    elif cmd.startswith("ai "):
+        result = self.ai_chat(cmd[3:])
+        self.speak(result)
+
+    # ======================
+    # TELEGRAM BOT
+    # ======================
+    elif cmd.startswith("bot "):
+        self.create_telegram_bot(cmd[4:])
+
+    # ======================
+    # PLUGINS
+    # ======================
+    elif cmd == "plugins":
+        self.list_plugins()
+
+    elif cmd.startswith("plugin "):
+        self.create_plugin(cmd[7:])
+
+    # ======================
+    # UPDATE
+    # ======================
+    elif cmd == "update":
+        self.check_update()
+
+    # ======================
+    # NOTES & TASKS
+    # ======================
+    elif cmd.startswith("note "):
+        self.add_note(cmd[5:])
+
+    elif cmd == "notes":
+        self.show_notes()
+
+    elif cmd.startswith("task "):
+        self.add_task(cmd[5:])
+
+    elif cmd == "tasks":
+        self.show_tasks()
+
+    elif cmd.startswith("done "):
+        self.done_task(int(cmd[5:]))
+
+    # ======================
+    # GUI
+    # ======================
+    elif cmd == "gui":
+        self.start_gui()
+
+    # ======================
+    # EXIT
+    # ======================
+    elif cmd == "exit":
+        self.running = False
+        self.speak("Dastur to'xtadi.")
+
+    else:
+        self.speak("Buyruq topilmadi.")
