@@ -1,0 +1,1887 @@
+import os
+import sys
+import json
+import time
+import shutil
+import platform
+import socket
+import subprocess
+import datetime
+import webbrowser
+
+import asyncio
+import edge_tts
+
+
+# ==========================
+# 🔊 VOICE ENGINE (TTS)
+# ==========================
+class VoiceEngine:
+
+    def __init__(self):
+        self.voice = "uz-UZ-SardorNeural"  # Uzbek ovoz (agar ishlamasa default bo'ladi)
+
+    async def _speak_async(self, text, file="voice.mp3"):
+
+        communicate = edge_tts.Communicate(text, self.voice)
+
+        await communicate.save(file)
+
+        try:
+            if platform.system() == "Windows":
+                os.system(f"start {file}")
+            else:
+                os.system(f"mpg123 {file}")
+        except:
+            pass
+
+    def speak(self, text):
+
+        print("[JARVIS]:", text)
+
+        try:
+            asyncio.run(self._speak_async(text))
+        except Exception as e:
+            print("TTS error:", e)
+
+
+# ==========================
+# 🤖 JARVIS CORE
+# ==========================
+class Jarvis:
+
+    def __init__(self):
+
+        self.workspace = "JarvisFiles"
+        os.makedirs(self.workspace, exist_ok=True)
+
+        self.voice_engine = VoiceEngine()
+
+        self.running = True
+
+        self.speak("JARVIS 10.0 ishga tushdi")
+
+    # ======================
+    # 🔊 SPEAK
+    # ======================
+    def speak(self, text):
+        self.voice_engine.speak(text)
+
+    # ======================
+    # 💬 COMMAND INPUT
+    # ======================
+    def listen(self):
+        return input(">>> ").lower().strip()
+
+    # ======================
+    # 📁 FILE SYSTEM
+    # ======================
+    def create_file(self, name, content=""):
+        path = os.path.join(self.workspace, name)
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(content)
+        self.speak("Fayl yaratildi")
+
+    def read_file(self, name):
+        path = os.path.join(self.workspace, name)
+        if os.path.exists(path):
+            print(open(path, encoding="utf-8").read())
+        else:
+            self.speak("Topilmadi")
+
+    def list_files(self):
+        print(os.listdir(self.workspace))
+
+    # ======================
+    # 🌐 INTERNET
+    # ======================
+    def google(self, q):
+        webbrowser.open("https://google.com/search?q=" + q)
+        self.speak("Google ochildi")
+
+    # ======================
+    # 💻 SYSTEM
+    # ======================
+    def system_info(self):
+        print("OS:", platform.system())
+        print("Python:", platform.python_version())
+
+    # ======================
+    # 🧠 AI SIMPLE
+    # ======================
+    def ai(self, text):
+
+        if "salom" in text:
+            return "Salom! Men JARVISman."
+
+        elif "isming" in text:
+            return "Mening ismim JARVIS 10.0"
+
+        elif "vaqt" in text:
+            return str(datetime.datetime.now())
+
+        else:
+            return "Tushunmadim"
+
+    # ======================
+    # ⚙️ EXECUTE ENGINE
+    # ======================
+    def execute(self, cmd):
+
+        if cmd == "exit":
+            self.running = False
+
+        elif cmd == "files":
+            self.list_files()
+
+        elif cmd.startswith("mk "):
+            self.create_file(cmd[3:])
+
+        elif cmd.startswith("read "):
+            self.read_file(cmd[5:])
+
+        elif cmd.startswith("google "):
+            self.google(cmd[7:])
+
+        elif cmd == "system":
+            self.system_info()
+
+        elif cmd.startswith("ai "):
+            self.speak(self.ai(cmd[3:]))
+
+        else:
+            self.speak("Buyruq topilmadi")
+
+
+# ==========================
+# 🚀 START
+# ==========================
+if __name__ == "__main__":
+
+    bot = Jarvis()
+
+    while bot.running:
+
+        cmd = bot.listen()
+        bot.execute(cmd)
+# ==========================
+# DATA VA LOG TIZIMI
+# ==========================
+
+def load_data(self):
+    if os.path.exists(self.data_file):
+        try:
+            with open(self.data_file, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
+
+    return {
+        "notes": [],
+        "tasks": [],
+        "history": [],
+        "settings": {}
+    }
+
+
+def save_data(self):
+    with open(self.data_file, "w", encoding="utf-8") as f:
+        json.dump(self.data, f, indent=4, ensure_ascii=False)
+
+
+def log(self, text):
+    now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    with open(self.log_file, "a", encoding="utf-8") as f:
+        f.write(f"[{now}] {text}\n")
+
+
+# ==========================
+# OVOZ CHIQARISH
+# ==========================
+
+def speak(self, text):
+
+    print(f"\n[JARVIS] {text}")
+
+    self.log(text)
+
+    if self.voice:
+        try:
+            self.engine.say(text)
+            self.engine.runAndWait()
+        except Exception:
+            pass
+
+
+# ==========================
+# OVOZNI TINGLASH
+# ==========================
+
+def listen(self):
+
+    if not VOICE_AVAILABLE:
+        return input("Buyruq: ").lower()
+
+    recognizer = sr.Recognizer()
+
+    try:
+        with sr.Microphone() as source:
+
+            print("🎤 Gapiring...")
+
+            recognizer.adjust_for_ambient_noise(source, duration=1)
+
+            audio = recognizer.listen(
+                source,
+                timeout=6,
+                phrase_time_limit=15
+            )
+
+        text = recognizer.recognize_google(
+            audio,
+            language="uz-UZ"
+        )
+
+        text = text.lower()
+
+        print("Siz:", text)
+
+        self.log("VOICE : " + text)
+
+        return text
+
+    except sr.WaitTimeoutError:
+        self.speak("Ovoz eshitilmadi")
+
+    except sr.UnknownValueError:
+        self.speak("Tushunmadim")
+
+    except sr.RequestError:
+        self.speak("Internet xatosi")
+
+    except Exception as e:
+        print(e)
+
+    return ""
+
+
+# ==========================
+# BUYRUQ OLISH
+# ==========================
+
+def command(self):
+
+    if self.voice_mode:
+        return self.listen()
+
+    return input("\n>>> ").lower().strip()
+# ======================================
+# FILE MANAGER
+# ======================================
+
+def create_folder(self, name):
+
+    path = os.path.join(self.workspace, name)
+
+    try:
+        os.makedirs(path, exist_ok=True)
+        self.speak(f"{name} papkasi yaratildi.")
+    except Exception as e:
+        self.speak("Papka yaratilmadi.")
+        print(e)
+
+
+def create_file(self, filename, text=""):
+
+    path = os.path.join(self.workspace, filename)
+
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(text)
+
+        self.speak(f"{filename} yaratildi.")
+
+    except Exception as e:
+        self.speak("Fayl yaratilmadi.")
+        print(e)
+
+
+def read_file(self, filename):
+
+    path = os.path.join(self.workspace, filename)
+
+    if not os.path.exists(path):
+        self.speak("Fayl topilmadi.")
+        return
+
+    with open(path, "r", encoding="utf-8") as f:
+        print(f.read())
+
+
+def append_file(self, filename, text):
+
+    path = os.path.join(self.workspace, filename)
+
+    with open(path, "a", encoding="utf-8") as f:
+        f.write("\n" + text)
+
+    self.speak("Matn qo'shildi.")
+
+
+def delete_item(self, name):
+
+    path = os.path.join(self.workspace, name)
+
+    if os.path.isfile(path):
+        os.remove(path)
+        self.speak("Fayl o'chirildi.")
+
+    elif os.path.isdir(path):
+        shutil.rmtree(path)
+        self.speak("Papka o'chirildi.")
+
+    else:
+        self.speak("Topilmadi.")
+
+
+def rename_item(self, old_name, new_name):
+
+    old = os.path.join(self.workspace, old_name)
+    new = os.path.join(self.workspace, new_name)
+
+    if os.path.exists(old):
+        os.rename(old, new)
+        self.speak("Nom o'zgartirildi.")
+    else:
+        self.speak("Element topilmadi.")
+
+
+def copy_file(self, src, dst):
+
+    src = os.path.join(self.workspace, src)
+    dst = os.path.join(self.workspace, dst)
+
+    shutil.copy2(src, dst)
+
+    self.speak("Nusxa olindi.")
+
+
+def move_file(self, src, dst):
+
+    src = os.path.join(self.workspace, src)
+    dst = os.path.join(self.workspace, dst)
+
+    shutil.move(src, dst)
+
+    self.speak("Ko'chirildi.")
+
+
+def list_files(self):
+
+    files = os.listdir(self.workspace)
+
+    print("\n===== WORKSPACE =====")
+
+    for f in files:
+
+        if os.path.isdir(os.path.join(self.workspace, f)):
+            print("[DIR ]", f)
+
+        else:
+            print("[FILE]", f)
+
+    print("=====================")
+
+
+def open_workspace(self):
+
+    try:
+
+        if platform.system() == "Windows":
+            os.startfile(self.workspace)
+
+        elif platform.system() == "Linux":
+            subprocess.Popen(["xdg-open", self.workspace])
+
+        elif platform.system() == "Darwin":
+            subprocess.Popen(["open", self.workspace])
+
+    except Exception as e:
+        print(e)
+
+
+def search_file(self, keyword):
+
+    print("\nNatijalar:")
+
+    for root, dirs, files in os.walk(self.workspace):
+
+        for file in files:
+
+            if keyword.lower() in file.lower():
+
+                print(os.path.join(root, file))
+
+
+def folder_size(self):
+
+    total = 0
+
+    for path, dirs, files in os.walk(self.workspace):
+
+        for file in files:
+
+            fp = os.path.join(path, file)
+
+            total += os.path.getsize(fp)
+
+    print(f"Workspace hajmi: {round(total/1024/1024,2)} MB")
+# ==========================================
+# 4-QISM
+# PYTHON TOOLS
+# ==========================================
+
+def create_python_file(self, name):
+
+    if not name.endswith(".py"):
+        name += ".py"
+
+    path = os.path.join(self.workspace, name)
+
+    code = f'''#!/usr/bin/env python3
+# -*- coding:utf-8 -*-
+
+def main():
+    print("Hello from {name}")
+
+if __name__=="__main__":
+    main()
+'''
+
+    with open(path,"w",encoding="utf-8") as f:
+        f.write(code)
+
+    self.speak("Python fayli yaratildi.")
+
+
+def run_python(self,name):
+
+    path=os.path.join(self.workspace,name)
+
+    subprocess.run([sys.executable,path])
+
+
+def analyze_code(self,name):
+
+    path=os.path.join(self.workspace,name)
+
+    if not os.path.exists(path):
+        self.speak("Topilmadi")
+        return
+
+    with open(path,"r",encoding="utf-8") as f:
+        code=f.read()
+
+    print("Qator:",len(code.splitlines()))
+    print("Funksiya:",code.count("def "))
+    print("Class:",code.count("class "))
+    print("Import:",code.count("import "))
+
+
+def pip_install(self,package):
+
+    subprocess.run([
+        sys.executable,
+        "-m",
+        "pip",
+        "install",
+        package
+    ])
+
+
+def pip_list(self):
+
+    subprocess.run([
+        sys.executable,
+        "-m",
+        "pip",
+        "list"
+    ])
+
+
+def create_project(self,name):
+
+    folder=os.path.join(self.workspace,name)
+
+    os.makedirs(folder,exist_ok=True)
+
+    os.makedirs(folder+"/data",exist_ok=True)
+    os.makedirs(folder+"/modules",exist_ok=True)
+
+    open(folder+"/main.py","w").write("print('Project Started')")
+
+    open(folder+"/requirements.txt","w").close()
+
+    self.speak("Python loyiha yaratildi")
+# ==========================================
+# 6-QISM
+# INTERNET VA GITHUB
+# ==========================================
+
+def google_search(self, query):
+
+    if not query:
+        self.speak("Qidiruv matni yo'q.")
+        return
+
+    url = "https://www.google.com/search?q=" + query.replace(" ", "+")
+
+    webbrowser.open(url)
+
+    self.speak("Google ochildi.")
+
+
+def youtube_search(self, query):
+
+    url = "https://www.youtube.com/results?search_query=" + query.replace(" ", "+")
+
+    webbrowser.open(url)
+
+    self.speak("YouTube ochildi.")
+
+
+def github_search(self, query):
+
+    url = "https://github.com/search?q=" + query.replace(" ", "+")
+
+    webbrowser.open(url)
+
+    self.speak("GitHub ochildi.")
+
+
+def download_file(self, url, filename=None):
+
+    try:
+
+        if filename is None:
+            filename = url.split("/")[-1]
+
+        path = os.path.join(self.workspace, filename)
+
+        r = requests.get(url, stream=True, timeout=60)
+
+        with open(path, "wb") as f:
+
+            for chunk in r.iter_content(8192):
+
+                if chunk:
+                    f.write(chunk)
+
+        self.speak("Yuklab olindi.")
+
+    except Exception as e:
+
+        print(e)
+
+        self.speak("Yuklashda xato.")
+
+
+def github_clone(self, repo):
+
+    if shutil.which("git") is None:
+
+        self.speak("Git o'rnatilmagan.")
+
+        return
+
+    subprocess.run(["git", "clone", repo])
+
+    self.speak("Clone tugadi.")
+
+
+def open_url(self, url):
+
+    webbrowser.open(url)
+
+    self.speak("Brauzer ochildi.")
+# ==========================================
+# 7-QISM
+# SYSTEM TOOLS
+# ==========================================
+
+def system_info(self):
+
+    print("=" * 50)
+
+    print("OS :", platform.system())
+
+    print("Version :", platform.version())
+
+    print("Python :", platform.python_version())
+
+    print("CPU :", psutil.cpu_percent(), "%")
+
+    print("RAM :", psutil.virtual_memory().percent, "%")
+
+    print("Disk :", psutil.disk_usage("/").percent, "%")
+
+    print("=" * 50)
+
+
+def battery_info(self):
+
+    battery = psutil.sensors_battery()
+
+    if battery:
+
+        print("Battery :", battery.percent, "%")
+
+    else:
+
+        print("Battery topilmadi")
+
+
+def internet_test(self):
+
+    try:
+
+        requests.get("https://google.com", timeout=5)
+
+        self.speak("Internet ulangan.")
+
+    except:
+
+        self.speak("Internet yo'q.")
+
+
+def shutdown_pc(self):
+
+    if platform.system() == "Windows":
+
+        os.system("shutdown /s /t 0")
+
+
+def restart_pc(self):
+
+    if platform.system() == "Windows":
+
+        os.system("shutdown /r /t 0")
+
+
+def sleep_pc(self):
+
+    if platform.system() == "Windows":
+
+        os.system("rundll32.exe powrprof.dll,SetSuspendState Sleep")
+
+
+def cpu_monitor(self):
+
+    while True:
+
+        print("CPU:", psutil.cpu_percent(), "%")
+
+        time.sleep(2)
+# ==========================================
+# 8-QISM
+# CMD VA WINDOWS BOSHQARUVI
+# ==========================================
+
+def run_cmd(self, command):
+
+    if not command.strip():
+        self.speak("CMD buyrug'ini kiriting.")
+        return
+
+    try:
+        result = subprocess.run(
+            command,
+            shell=True,
+            capture_output=True,
+            text=True
+        )
+
+        if result.stdout:
+            print(result.stdout)
+
+        if result.stderr:
+            print(result.stderr)
+
+    except Exception as e:
+        print(e)
+
+
+def open_cmd(self):
+
+    if platform.system() == "Windows":
+        os.system("start cmd")
+    else:
+        self.speak("Faqat Windows uchun.")
+
+
+def open_powershell(self):
+
+    if platform.system() == "Windows":
+        os.system("start powershell")
+
+
+def open_notepad(self):
+
+    if platform.system() == "Windows":
+        os.system("start notepad")
+
+
+def open_calculator(self):
+
+    if platform.system() == "Windows":
+        os.system("start calc")
+
+
+def open_paint(self):
+
+    if platform.system() == "Windows":
+        os.system("start mspaint")
+
+
+def open_task_manager(self):
+
+    if platform.system() == "Windows":
+        os.system("start taskmgr")
+
+
+def open_control_panel(self):
+
+    if platform.system() == "Windows":
+        os.system("control")
+
+
+def open_device_manager(self):
+
+    if platform.system() == "Windows":
+        os.system("devmgmt.msc")
+
+
+def open_registry(self):
+
+    if platform.system() == "Windows":
+        os.system("regedit")
+
+
+def open_services(self):
+
+    if platform.system() == "Windows":
+        os.system("services.msc")
+
+
+def open_explorer(self):
+
+    if platform.system() == "Windows":
+        os.system("start explorer")
+
+
+def lock_pc(self):
+
+    if platform.system() == "Windows":
+        os.system("rundll32.exe user32.dll,LockWorkStation")
+
+
+def kill_process(self, process):
+
+    try:
+        subprocess.run(
+            ["taskkill", "/F", "/IM", process],
+            check=False
+        )
+        self.speak(process + " yopildi.")
+    except Exception:
+        self.speak("Jarayonni yopib bo'lmadi.")
+
+
+def start_program(self, path):
+
+    try:
+        os.startfile(path)
+        self.speak("Dastur ishga tushdi.")
+    except Exception:
+        self.speak("Dastur topilmadi.")
+
+
+def environment_info(self):
+
+    print("=" * 50)
+
+    for k, v in os.environ.items():
+        print(f"{k} = {v}")
+
+    print("=" * 50)
+# ==========================================
+# 9-QISM
+# GUI (TKINTER)
+# ==========================================
+
+import tkinter as tk
+from tkinter import scrolledtext
+
+def start_gui(self):
+
+    self.root = tk.Tk()
+
+    self.root.title("JARVIS AI 10.0 Professional")
+    self.root.geometry("900x600")
+
+    self.output = scrolledtext.ScrolledText(
+        self.root,
+        width=100,
+        height=25
+    )
+
+    self.output.pack(pady=10)
+
+    self.entry = tk.Entry(
+        self.root,
+        width=70,
+        font=("Arial",12)
+    )
+
+    self.entry.pack(pady=5)
+
+    self.entry.bind("<Return>", self.gui_command)
+
+    tk.Button(
+        self.root,
+        text="Yuborish",
+        command=self.gui_send,
+        width=15
+    ).pack(pady=5)
+
+    tk.Button(
+        self.root,
+        text="System Info",
+        command=self.gui_system,
+        width=15
+    ).pack()
+
+    tk.Button(
+        self.root,
+        text="Workspace",
+        command=self.open_workspace,
+        width=15
+    ).pack()
+
+    self.output.insert(
+        tk.END,
+        "JARVIS AI 10.0 Professional ishga tushdi.\n"
+    )
+
+    self.root.mainloop()
+
+
+def gui_send(self):
+
+    cmd = self.entry.get()
+
+    self.output.insert(
+        tk.END,
+        "\nSiz : " + cmd + "\n"
+    )
+
+    self.entry.delete(0, tk.END)
+
+    self.execute_gui(cmd)
+
+
+def gui_command(self, event):
+
+    self.gui_send()
+
+
+def execute_gui(self, cmd):
+
+    cmd = cmd.lower()
+
+    if cmd == "system":
+
+        ram = psutil.virtual_memory()
+
+        self.output.insert(
+            tk.END,
+            f"RAM: {ram.percent}%\n"
+        )
+
+    elif cmd == "files":
+
+        files = os.listdir(self.workspace)
+
+        for f in files:
+
+            self.output.insert(
+                tk.END,
+                f + "\n"
+            )
+
+    elif cmd == "time":
+
+        self.output.insert(
+            tk.END,
+            str(datetime.datetime.now()) + "\n"
+        )
+
+    elif cmd.startswith("google "):
+
+        self.google_search(cmd[7:])
+
+        self.output.insert(
+            tk.END,
+            "Google ochildi\n"
+        )
+
+    else:
+
+        self.output.insert(
+            tk.END,
+            "Buyruq topilmadi.\n"
+        )
+
+
+def gui_system(self):
+
+    cpu = psutil.cpu_percent()
+
+    ram = psutil.virtual_memory().percent
+
+    disk = psutil.disk_usage("/").percent
+
+    self.output.insert(
+        tk.END,
+        f"\nCPU : {cpu}%"
+        f"\nRAM : {ram}%"
+        f"\nDISK: {disk}%\n"
+    )
+# ==========================================
+# 10-QISM
+# AI VA KOD GENERATOR
+# ==========================================
+
+def ai_chat(self, text):
+
+    text = text.lower()
+
+    if "salom" in text:
+        return "Assalomu alaykum."
+
+    elif "isming" in text:
+        return "Mening ismim JARVIS AI 10.0."
+
+    elif "vaqt" in text:
+        return str(datetime.datetime.now())
+
+    elif "python" in text:
+        return "Python eng kuchli dasturlash tillaridan biri."
+
+    elif "rahmat" in text:
+        return "Arzimaydi."
+
+    else:
+        return "Bu savolga javob topilmadi."
+
+
+def generate_python(self, filename):
+
+    if not filename.endswith(".py"):
+        filename += ".py"
+
+    path = os.path.join(self.workspace, filename)
+
+    code = f'''#!/usr/bin/env python3
+
+def main():
+
+    print("Salom!")
+
+if __name__=="__main__":
+    main()
+'''
+
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(code)
+
+    self.speak("Python kodi yaratildi.")
+
+
+def generate_html(self, name):
+
+    if not name.endswith(".html"):
+        name += ".html"
+
+    path = os.path.join(self.workspace, name)
+
+    html = """
+<!DOCTYPE html>
+<html>
+<head>
+<title>JARVIS</title>
+</head>
+<body>
+
+<h1>Salom Dunyo</h1>
+
+</body>
+</html>
+"""
+
+    open(path, "w", encoding="utf-8").write(html)
+
+    self.speak("HTML yaratildi.")
+
+
+def generate_css(self, name):
+
+    if not name.endswith(".css"):
+        name += ".css"
+
+    css = """
+body{
+
+background:#222;
+
+color:white;
+
+font-family:Arial;
+
+}
+"""
+
+    open(
+        os.path.join(self.workspace, name),
+        "w",
+        encoding="utf-8"
+    ).write(css)
+
+    self.speak("CSS yaratildi.")
+
+
+def generate_js(self, name):
+
+    if not name.endswith(".js"):
+        name += ".js"
+
+    js = """
+
+console.log("JARVIS");
+
+"""
+
+    open(
+        os.path.join(self.workspace, name),
+        "w",
+        encoding="utf-8"
+    ).write(js)
+
+    self.speak("JavaScript yaratildi.")
+
+
+def generate_json(self, name):
+
+    if not name.endswith(".json"):
+        name += ".json"
+
+    data = {
+        "developer": "Otabek",
+        "version": "10.0"
+    }
+
+    with open(
+        os.path.join(self.workspace, name),
+        "w",
+        encoding="utf-8"
+    ) as f:
+
+        json.dump(data, f, indent=4)
+
+
+def analyze_python(self, filename):
+
+    path = os.path.join(self.workspace, filename)
+
+    if not os.path.exists(path):
+        self.speak("Topilmadi.")
+        return
+
+    text = open(
+        path,
+        encoding="utf-8"
+    ).read()
+
+    print("Qator:", len(text.splitlines()))
+    print("def:", text.count("def "))
+    print("class:", text.count("class "))
+    print("import:", text.count("import "))
+
+
+def calculator(self, expression):
+
+    try:
+
+        result = eval(expression)
+
+        print(result)
+
+    except:
+
+        self.speak("Hisoblab bo'lmadi.")
+# ==========================================
+# 11-QISM
+# TELEGRAM BOT GENERATOR
+# ==========================================
+
+def create_telegram_bot(self, bot_name):
+
+    if not bot_name:
+        bot_name = "MyBot"
+
+    folder = os.path.join(self.workspace, bot_name)
+
+    os.makedirs(folder, exist_ok=True)
+
+    main_code = '''from telegram import Update
+from telegram.ext import (
+ApplicationBuilder,
+CommandHandler,
+MessageHandler,
+ContextTypes,
+filters
+)
+
+TOKEN="YOUR_BOT_TOKEN"
+
+async def start(update:Update,
+context:ContextTypes.DEFAULT_TYPE):
+
+    await update.message.reply_text(
+        "Assalomu alaykum!"
+    )
+
+async def help(update:Update,
+context:ContextTypes.DEFAULT_TYPE):
+
+    await update.message.reply_text(
+        "Yordam menyusi"
+    )
+
+async def echo(update:Update,
+context:ContextTypes.DEFAULT_TYPE):
+
+    await update.message.reply_text(
+        update.message.text
+    )
+
+app=ApplicationBuilder().token(TOKEN).build()
+
+app.add_handler(CommandHandler("start",start))
+app.add_handler(CommandHandler("help",help))
+app.add_handler(
+MessageHandler(
+filters.TEXT & ~filters.COMMAND,
+echo
+)
+)
+
+app.run_polling()
+'''
+
+    with open(
+        os.path.join(folder, "main.py"),
+        "w",
+        encoding="utf-8"
+    ) as f:
+        f.write(main_code)
+
+    with open(
+        os.path.join(folder, "requirements.txt"),
+        "w",
+        encoding="utf-8"
+    ) as f:
+        f.write("python-telegram-bot==20.7\n")
+
+    with open(
+        os.path.join(folder, "README.md"),
+        "w",
+        encoding="utf-8"
+    ) as f:
+        f.write("# Telegram Bot\n\n")
+        f.write("1. requirements.txt ni o'rnating\n")
+        f.write("2. TOKEN ni almashtiring\n")
+        f.write("3. python main.py ni ishga tushiring\n")
+
+    self.speak("Telegram bot yaratildi.")
+
+
+def install_bot_packages(self):
+
+    subprocess.run([
+        sys.executable,
+        "-m",
+        "pip",
+        "install",
+        "python-telegram-bot"
+    ])
+
+    self.speak("Kutubxonalar o'rnatildi.")
+
+
+def run_bot(self, folder):
+
+    path = os.path.join(
+        self.workspace,
+        folder,
+        "main.py"
+    )
+
+    if os.path.exists(path):
+
+        subprocess.run([
+            sys.executable,
+            path
+        ])
+
+    else:
+
+        self.speak("Bot topilmadi.")
+
+
+def bot_info(self):
+
+    print("=" * 40)
+    print("Telegram Bot Generator")
+    print("Versiya : 10.0")
+    print("Developer : Otabek")
+    print("=" * 40)
+# ==========================================
+# 12-QISM
+# ESLATMA VA VAZIFALAR (TASK MANAGER)
+# ==========================================
+
+def add_note(self, text):
+
+    if not text:
+        self.speak("Eslatma matni yo'q.")
+        return
+
+    self.data["notes"].append({
+        "text": text,
+        "time": str(datetime.datetime.now())
+    })
+
+    self.save_data()
+
+    self.speak("Eslatma qo'shildi.")
+
+
+def show_notes(self):
+
+    notes = self.data.get("notes", [])
+
+    if not notes:
+        self.speak("Eslatmalar yo'q.")
+        return
+
+    print("\n===== ESALTMALAR =====")
+
+    for i, n in enumerate(notes, 1):
+        print(f"{i}. {n['text']} ({n['time']})")
+
+
+def delete_note(self, index):
+
+    try:
+
+        self.data["notes"].pop(index - 1)
+
+        self.save_data()
+
+        self.speak("Eslatma o'chirildi.")
+
+    except:
+
+        self.speak("Xato index.")
+
+
+def add_task(self, task):
+
+    if not task:
+        self.speak("Vazifa yo'q.")
+        return
+
+    self.data["tasks"].append({
+        "task": task,
+        "done": False,
+        "time": str(datetime.datetime.now())
+    })
+
+    self.save_data()
+
+    self.speak("Vazifa qo'shildi.")
+
+
+def show_tasks(self):
+
+    tasks = self.data.get("tasks", [])
+
+    if not tasks:
+        self.speak("Vazifalar yo'q.")
+        return
+
+    print("\n===== VAZIFALAR =====")
+
+    for i, t in enumerate(tasks, 1):
+
+        status = "✔" if t["done"] else "✖"
+
+        print(f"{i}. {t['task']} [{status}]")
+
+
+def done_task(self, index):
+
+    try:
+
+        self.data["tasks"][index - 1]["done"] = True
+
+        self.save_data()
+
+        self.speak("Vazifa bajarildi.")
+
+    except:
+
+        self.speak("Xato index.")
+
+
+def delete_task(self, index):
+
+    try:
+
+        self.data["tasks"].pop(index - 1)
+
+        self.save_data()
+
+        self.speak("Vazifa o'chirildi.")
+
+    except:
+
+        self.speak("Xato index.")
+
+
+def clear_all(self):
+
+    self.data["notes"] = []
+    self.data["tasks"] = []
+
+    self.save_data()
+
+    self.speak("Hammasi tozalandi.")
+
+
+def reminder_loop(self):
+
+    while True:
+
+        time.sleep(10)
+
+        if self.data["tasks"]:
+
+            for t in self.data["tasks"]:
+
+                if not t["done"]:
+
+                    print("⏰ Eslatma:", t["task"])
+# ==========================================
+# 13-QISM
+# PLUGIN TIZIMI
+# ==========================================
+
+def load_plugins(self):
+
+    self.plugins = {}
+
+    plugin_folder = os.path.join(self.workspace, "plugins")
+
+    os.makedirs(plugin_folder, exist_ok=True)
+
+    for file in os.listdir(plugin_folder):
+
+        if file.endswith(".py"):
+
+            try:
+                path = os.path.join(plugin_folder, file)
+
+                with open(path, "r", encoding="utf-8") as f:
+                    code = f.read()
+
+                local_vars = {}
+
+                exec(code, {}, local_vars)
+
+                self.plugins[file] = local_vars
+
+                self.speak(f"{file} plugin yuklandi.")
+
+            except Exception as e:
+                print("Plugin xato:", file, e)
+
+
+def run_plugin(self, name, function, *args):
+
+    try:
+
+        plugin = self.plugins.get(name)
+
+        if not plugin:
+            self.speak("Plugin topilmadi.")
+            return
+
+        func = plugin.get(function)
+
+        if not func:
+            self.speak("Funksiya topilmadi.")
+            return
+
+        return func(*args)
+
+    except Exception as e:
+        print(e)
+        self.speak("Plugin ishlamadi.")
+
+
+def create_plugin(self, name):
+
+    plugin_path = os.path.join(
+        self.workspace,
+        "plugins",
+        name + ".py"
+    )
+
+    os.makedirs(os.path.dirname(plugin_path), exist_ok=True)
+
+    code = f"""
+def run():
+    print("{name} plugin ishladi")
+
+def info():
+    return "Plugin: {name}"
+"""
+
+    with open(plugin_path, "w", encoding="utf-8") as f:
+        f.write(code)
+
+    self.speak("Plugin yaratildi.")
+
+
+def list_plugins(self):
+
+    plugin_folder = os.path.join(self.workspace, "plugins")
+
+    if not os.path.exists(plugin_folder):
+
+        self.speak("Plugin yo'q.")
+
+        return
+
+    files = os.listdir(plugin_folder)
+
+    print("\n===== PLUGINS =====")
+
+    for f in files:
+
+        print("-", f)
+
+
+def delete_plugin(self, name):
+
+    path = os.path.join(
+        self.workspace,
+        "plugins",
+        name
+    )
+
+    if os.path.exists(path):
+
+        os.remove(path)
+
+        self.speak("Plugin o'chirildi.")
+
+    else:
+
+        self.speak("Topilmadi.")
+
+
+def reload_plugins(self):
+
+    self.speak("Pluginlar yangilanmoqda...")
+
+    self.load_plugins()
+# ==========================================
+# 14-QISM
+# AUTO UPDATE TIZIMI
+# ==========================================
+
+def check_update(self):
+
+    try:
+
+        url = "https://example.com/jarvis/version.txt"
+
+        r = requests.get(url, timeout=10)
+
+        latest_version = r.text.strip()
+
+        current_version = self.version
+
+        print("Current:", current_version)
+        print("Latest :", latest_version)
+
+        if latest_version != current_version:
+
+            self.speak("Yangi versiya topildi.")
+
+            return latest_version
+
+        else:
+
+            self.speak("Sizda eng so'nggi versiya bor.")
+
+            return None
+
+    except Exception as e:
+
+        print(e)
+
+        self.speak("Yangilanish tekshirib bo'lmadi.")
+
+        return None
+
+
+def download_update(self, url):
+
+    try:
+
+        file_name = "jarvis_update.py"
+
+        path = os.path.join(self.workspace, file_name)
+
+        r = requests.get(url, stream=True, timeout=30)
+
+        with open(path, "wb") as f:
+
+            for chunk in r.iter_content(8192):
+
+                if chunk:
+                    f.write(chunk)
+
+        self.speak("Yangilanish yuklab olindi.")
+
+        return path
+
+    except Exception as e:
+
+        print(e)
+
+        self.speak("Yuklab olishda xato.")
+
+        return None
+
+
+def apply_update(self, file_path):
+
+    try:
+
+        if os.path.exists(file_path):
+
+            backup = self.workspace + "/backup.py"
+
+            shutil.copy2(__file__, backup)
+
+            shutil.copy2(file_path, __file__)
+
+            self.speak("Yangilanish o'rnatildi. Qayta ishga tushiring.")
+
+        else:
+
+            self.speak("Fayl topilmadi.")
+
+    except Exception as e:
+
+        print(e)
+
+        self.speak("Yangilashda xato.")
+
+
+def rollback_update(self):
+
+    try:
+
+        backup = self.workspace + "/backup.py"
+
+        if os.path.exists(backup):
+
+            shutil.copy2(backup, __file__)
+
+            self.speak("Oldingi versiya tiklandi.")
+
+        else:
+
+            self.speak("Backup yo'q.")
+
+    except Exception as e:
+
+        print(e)
+def ai_chat(self, text):
+
+    text = text.lower()
+
+    if "salom" in text:
+        return "Assalomu alaykum! Men JARVIS 10.0 sizga yordam berishga tayyorman."
+
+    elif "isming" in text:
+        return "Mening ismim JARVIS 10.0, men sizning shaxsiy yordamchingizman."
+
+    elif "nima qila olasan" in text:
+        return "Men fayl yarataman, kod yozaman, internetdan qidiraman va kompyuterni boshqaraman."
+
+    elif "vaqt" in text:
+        import datetime
+        return "Hozirgi vaqt: " + str(datetime.datetime.now())
+
+    else:
+        return "Kechirasiz, men bu savolni hali tushunmadim, lekin o‘rganayapman."
+# ==========================================
+# 15-QISM
+# BUYRUQLAR MARKAZI (BRAIN SYSTEM)
+# ==========================================
+
+def execute_command(self, cmd):
+
+    cmd = cmd.lower().strip()
+
+    if not cmd:
+        return
+
+    self.log("CMD: " + cmd)
+
+    # ======================
+    # SYSTEM BUYRUQLAR
+    # ======================
+    if cmd == "system":
+        self.system_info()
+
+    elif cmd == "battery":
+        self.battery_info()
+
+    elif cmd == "internet":
+        self.internet_test()
+
+    # ======================
+    # FILE BUYRUQLAR
+    # ======================
+    elif cmd.startswith("mkdir "):
+        self.create_folder(cmd[6:])
+
+    elif cmd.startswith("touch "):
+        self.create_file(cmd[6:])
+
+    elif cmd.startswith("read "):
+        self.read_file(cmd[5:])
+
+    elif cmd.startswith("del "):
+        self.delete_item(cmd[4:])
+
+    elif cmd.startswith("rename "):
+        parts = cmd.split(" ")
+        if len(parts) >= 3:
+            self.rename_item(parts[1], parts[2])
+
+    elif cmd == "files":
+        self.list_files()
+
+    elif cmd == "workspace":
+        self.open_workspace()
+
+    # ======================
+    # PYTHON BUYRUQLAR
+    # ======================
+    elif cmd.startswith("py "):
+        self.run_python(cmd[3:])
+
+    elif cmd.startswith("makepy "):
+        self.create_python_file(cmd[7:])
+
+    elif cmd.startswith("analyze "):
+        self.analyze_code(cmd[8:])
+
+    # ======================
+    # INTERNET
+    # ======================
+    elif cmd.startswith("google "):
+        self.google_search(cmd[7:])
+
+    elif cmd.startswith("youtube "):
+        self.youtube_search(cmd[8:])
+
+    elif cmd.startswith("github "):
+        self.github_search(cmd[7:])
+
+    elif cmd.startswith("download "):
+        self.download_file(cmd[9:])
+
+    # ======================
+    # CMD BUYRUQLAR
+    # ======================
+    elif cmd.startswith("cmd "):
+        self.run_cmd(cmd[4:])
+
+    elif cmd == "cmd":
+        self.open_cmd()
+
+    elif cmd == "powershell":
+        self.open_powershell()
+
+    elif cmd == "notepad":
+        self.open_notepad()
+
+    elif cmd == "calc":
+        self.open_calculator()
+
+    elif cmd == "paint":
+        self.open_paint()
+
+    elif cmd == "taskmgr":
+        self.open_task_manager()
+
+    # ======================
+    # AI
+    # ======================
+    elif cmd.startswith("ai "):
+        result = self.ai_chat(cmd[3:])
+        self.speak(result)
+
+    # ======================
+    # TELEGRAM BOT
+    # ======================
+    elif cmd.startswith("bot "):
+        self.create_telegram_bot(cmd[4:])
+
+    # ======================
+    # PLUGINS
+    # ======================
+    elif cmd == "plugins":
+        self.list_plugins()
+
+    elif cmd.startswith("plugin "):
+        self.create_plugin(cmd[7:])
+
+    # ======================
+    # UPDATE
+    # ======================
+    elif cmd == "update":
+        self.check_update()
+
+    # ======================
+    # NOTES & TASKS
+    # ======================
+    elif cmd.startswith("note "):
+        self.add_note(cmd[5:])
+
+    elif cmd == "notes":
+        self.show_notes()
+
+    elif cmd.startswith("task "):
+        self.add_task(cmd[5:])
+
+    elif cmd == "tasks":
+        self.show_tasks()
+
+    elif cmd.startswith("done "):
+        self.done_task(int(cmd[5:]))
+
+    # ======================
+    # GUI
+    # ======================
+    elif cmd == "gui":
+        self.start_gui()
+
+    # ======================
+    # EXIT
+    # ======================
+    elif cmd == "exit":
+        self.running = False
+        self.speak("Dastur to'xtadi.")
+
+    else:
+        self.speak("Buyruq topilmadi.")
+# ==========================================
+# 16-QISM
+# MAIN() VA JARVISNI ISHGA TUSHIRISH
+# ==========================================
+
+def banner():
+
+    print("=" * 60)
+    print("            JARVIS AI 10.0 PROFESSIONAL")
+    print("              Developer : Otabek")
+    print("              Version   : 10.0")
+    print("=" * 60)
+    print("Buyruqlar:")
+    print(" system        - Tizim ma'lumotlari")
+    print(" files         - Fayllarni ko'rish")
+    print(" workspace     - Workspace ochish")
+    print(" google <so'z> - Google qidiruv")
+    print(" youtube <so'z>")
+    print(" github <so'z>")
+    print(" ai <savol>")
+    print(" note <matn>")
+    print(" task <matn>")
+    print(" bot <nom>")
+    print(" update")
+    print(" gui")
+    print(" exit")
+    print("=" * 60)
+
+
+def main():
+
+    banner()
+
+    jarvis = Jarvis()
+
+    jarvis.speak(
+        "Assalomu alaykum! Men JARVIS 10.0. Buyruq kutyapman."
+    )
+
+    while jarvis.running:
+
+        try:
+
+            if jarvis.voice_mode:
+                cmd = jarvis.listen()
+            else:
+                cmd = input("\nJARVIS >>> ").strip()
+
+            if not cmd:
+                continue
+
+            jarvis.execute_command(cmd)
+
+        except KeyboardInterrupt:
+
+            jarvis.speak("Dastur to'xtatildi.")
+            break
+
+        except Exception as e:
+
+            print("Xato:", e)
+
+            jarvis.speak("Kutilmagan xatolik yuz berdi.")
+
+
+if __name__ == "__main__":
+
+    main()
