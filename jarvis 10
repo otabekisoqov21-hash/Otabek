@@ -1,0 +1,1748 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+jarvis.py — O'zbekcha virtual yordamchi "Jarvis" (BITTA FAYLLIK VERSIYA)
+
+Bu fayl, asl 10 modulli loyihaning barcha kodini bitta faylga
+birlashtirgan holati. Tuzilishi pastdagi 10 qismga bo'lingan
+(har biri "===== N-QISM =====" sarlavhasi bilan boshlanadi) — bu
+modulli versiyadagi har bir alohida faylga mos keladi.
+
+Ishga tushirish:
+    python jarvis.py
+"""
+
+import os
+import re
+import time
+import random
+import shutil
+import platform
+import datetime
+import tempfile
+import subprocess
+from urllib.parse import quote
+import webbrowser
+
+import requests
+
+try:
+    import speech_recognition as sr
+    OVOZ_TANISH_BOR = True
+except ImportError:
+    OVOZ_TANISH_BOR = False
+
+try:
+    from gtts import gTTS
+    from gtts.lang import tts_langs
+    GTTS_BOR = True
+except ImportError:
+    GTTS_BOR = False
+
+try:
+    from playsound import playsound
+    PLAYSOUND_BOR = True
+except ImportError:
+    PLAYSOUND_BOR = False
+
+try:
+    import psutil
+    PSUTIL_BOR = True
+except ImportError:
+    PSUTIL_BOR = False
+
+try:
+    import pyperclip
+    PYPERCLIP_BOR = True
+except ImportError:
+    PYPERCLIP_BOR = False
+
+try:
+    import pyautogui
+    PYAUTOGUI_BOR = True
+except ImportError:
+    PYAUTOGUI_BOR = False
+
+
+# ======================================================================
+# 1-QISM: SOZLAMALAR VA YORDAMCHI FUNKSIYALAR
+# ======================================================================
+
+ASSISTANT_NAME = "Jarvis"
+
+UY_PAPKA = os.path.expanduser("~")
+ASOSIY_PAPKA = os.path.join(UY_PAPKA, "Jarvis_Malumotlari")
+YUKLAMALAR_PAPKA = os.path.join(ASOSIY_PAPKA, "Yuklamalar")
+ESLATMALAR_FAYLI = os.path.join(ASOSIY_PAPKA, "eslatmalar.txt")
+VAZIFALAR_FAYLI = os.path.join(ASOSIY_PAPKA, "vazifalar.txt")
+KUNDALIK_FAYLI = os.path.join(ASOSIY_PAPKA, "kundalik.txt")
+LOG_FAYLI = os.path.join(ASOSIY_PAPKA, "jarvis_log.txt")
+
+# Google'ning matnni ovozga aylantirish (TTS) xizmati o'zbek tilini
+# qo'llamasa, shu zaxira tilga avtomatik o'tiladi (ekrandagi matn baribir
+# har doim o'zbek tilida qoladi — faqat ovoz boshqa tilda eshitiladi).
+ZAXIRA_TIL = "ru"
+
+
+def papkalarni_tayyorlash():
+    """Dastur ishlashi uchun zarur bo'lgan papkalarni yaratadi (mavjud
+    bo'lsa, hech narsa qilmaydi)."""
+    for papka in (ASOSIY_PAPKA, YUKLAMALAR_PAPKA):
+        os.makedirs(papka, exist_ok=True)
+
+
+def vaqt_belgisi():
+    """Joriy vaqtni 'YYYY-MM-DD HH:MM:SS' formatida qaytaradi."""
+    return time.strftime("%Y-%m-%d %H:%M:%S")
+
+
+def log_yozish(xabar):
+    """Dastur faoliyatini log fayliga yozadi. Xato yuz bersa ham dastur
+    to'xtamasligi uchun xatolik jim yutiladi."""
+    try:
+        papkalarni_tayyorlash()
+        with open(LOG_FAYLI, "a", encoding="utf-8") as f:
+            f.write(f"[{vaqt_belgisi()}] {xabar}\n")
+    except Exception:
+        pass
+
+
+def faylga_qator_qoshish(yol, qator):
+    """Berilgan matn fayliga yangi qator qo'shadi (fayl bo'lmasa, uni
+    yaratadi)."""
+    papkalarni_tayyorlash()
+    with open(yol, "a", encoding="utf-8") as f:
+        f.write(qator.rstrip("\n") + "\n")
+
+
+def fayldan_qatorlarni_oqish(yol):
+    """Berilgan fayldagi barcha qatorlarni (bo'sh qatorlarsiz) ro'yxat
+    qilib qaytaradi. Fayl mavjud bo'lmasa, bo'sh ro'yxat qaytaradi."""
+    if not os.path.exists(yol):
+        return []
+    with open(yol, "r", encoding="utf-8") as f:
+        return [q.rstrip("\n") for q in f.readlines() if q.strip()]
+
+
+def faylga_qatorlarni_yozish(yol, qatorlar):
+    """Berilgan ro'yxatni faylga qayta yozadi — fayldagi eski mazmunni
+    to'liq almashtiradi."""
+    papkalarni_tayyorlash()
+    with open(yol, "w", encoding="utf-8") as f:
+        for q in qatorlar:
+            f.write(q.rstrip("\n") + "\n")
+
+
+# ======================================================================
+# 2-QISM: OVOZ — GAPIRISH (TTS) VA ESHITISH (STT)
+# ======================================================================
+
+_OVOZ_YOQILGAN = True
+
+
+def ovoz_uz_qollanadimi():
+    """Google TTS xizmati 'uz' (o'zbek) tilini qo'llab-quvvatlaydimi,
+    tekshiradi. Internet bo'lmasa ham dastur yiqilib qolmasligi uchun
+    xatolikni ushlab, True qaytaradi (keyin gapir() ichida qayta
+    tekshiriladi)."""
+    if not GTTS_BOR:
+        return False
+    try:
+        return "uz" in tts_langs()
+    except Exception:
+        return True
+
+
+OVOZ_TILI = "uz" if ovoz_uz_qollanadimi() else ZAXIRA_TIL
+
+
+def audio_fayl_ochish(yol):
+    """playsound o'rnatilmagan bo'lsa, operatsion tizimning standart
+    pleyeri orqali audio faylni ochadi."""
+    system = platform.system()
+    try:
+        if system == "Windows":
+            os.startfile(yol)  # noqa
+        elif system == "Darwin":
+            subprocess.run(["afplay", yol], check=False)
+        else:
+            subprocess.run(["xdg-open", yol], check=False)
+    except Exception as e:
+        print(f"[Audio ochilmadi: {e}]")
+
+
+def ovozni_ochirish():
+    """Ovozli javoblarni vaqtincha o'chiradi — endi faqat matn chiqadi."""
+    global _OVOZ_YOQILGAN
+    _OVOZ_YOQILGAN = False
+    print(f"{ASSISTANT_NAME}: Ovoz o'chirildi, endi faqat matn bilan javob beraman.")
+
+
+def ovozni_yoqish():
+    """Ovozli javob berishni qayta yoqadi."""
+    global _OVOZ_YOQILGAN
+    _OVOZ_YOQILGAN = True
+    print(f"{ASSISTANT_NAME}: Ovoz qayta yoqildi.")
+
+
+def gapir(matn):
+    """Berilgan matnni ekranga chiqaradi va (agar ovoz yoqilgan va gTTS
+    mavjud bo'lsa) ovoz bilan aytadi. Ovoz tizimida xatolik bo'lsa ham
+    dastur ishlashda davom etadi — faqat matn ko'rinadi."""
+    print(f"\n{ASSISTANT_NAME}: {matn}")
+    log_yozish(f"GAPIRDI: {matn}")
+
+    if not GTTS_BOR or not _OVOZ_YOQILGAN:
+        return
+
+    try:
+        tts = gTTS(text=matn, lang=OVOZ_TILI)
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as fp:
+            vaqtinchalik_yol = fp.name
+        tts.save(vaqtinchalik_yol)
+
+        if PLAYSOUND_BOR:
+            playsound(vaqtinchalik_yol)
+        else:
+            audio_fayl_ochish(vaqtinchalik_yol)
+            time.sleep(min(len(matn) * 0.06, 6))
+
+        try:
+            os.remove(vaqtinchalik_yol)
+        except OSError:
+            pass
+    except Exception as e:
+        print(f"[Ovoz xatosi (internet yo'qmi?): {e}]")
+
+
+def eshit(vaqt_limiti=6):
+    """Mikrofondan ovozli buyruqni tinglab, uni o'zbekcha matnga
+    aylantiradi. Mikrofon topilmasa None, hech narsa eshitilmasa yoki
+    tushunilmasa bo'sh satr qaytaradi."""
+    if not OVOZ_TANISH_BOR:
+        return None
+
+    recognizer = sr.Recognizer()
+    try:
+        with sr.Microphone() as source:
+            print("[Tinglanyapti...]")
+            recognizer.adjust_for_ambient_noise(source, duration=0.5)
+            audio = recognizer.listen(source, timeout=vaqt_limiti, phrase_time_limit=8)
+    except sr.WaitTimeoutError:
+        return ""
+    except OSError:
+        return None
+
+    try:
+        matn = recognizer.recognize_google(audio, language="uz-UZ")
+        print(f"Siz: {matn}")
+        log_yozish(f"ESHITDI: {matn}")
+        return matn.lower()
+    except sr.UnknownValueError:
+        return ""
+    except sr.RequestError:
+        gapir("Internetga ulanishda muammo bor, ovozni tanib bo'lmadi.")
+        return ""
+
+
+# ======================================================================
+# 3-QISM: SANA VA VAQT
+# ======================================================================
+
+HAFTA_KUNLARI = [
+    "dushanba", "seshanba", "chorshanba", "payshanba",
+    "juma", "shanba", "yakshanba",
+]
+
+OYLAR = [
+    "yanvar", "fevral", "mart", "aprel", "may", "iyun",
+    "iyul", "avgust", "sentabr", "oktabr", "noyabr", "dekabr",
+]
+
+FASLLAR = {
+    12: "qish", 1: "qish", 2: "qish",
+    3: "bahor", 4: "bahor", 5: "bahor",
+    6: "yoz", 7: "yoz", 8: "yoz",
+    9: "kuz", 10: "kuz", 11: "kuz",
+}
+
+
+def vaqtni_aytish():
+    """Joriy soat va daqiqani aytadi."""
+    hozir = time.strftime("%H:%M")
+    gapir(f"Hozir soat {hozir}")
+    return hozir
+
+
+def sanani_aytish():
+    """Bugungi to'liq sanani (kun, oy, yil) aytadi."""
+    hozir = datetime.date.today()
+    oy_nomi = OYLAR[hozir.month - 1]
+    gapir(f"Bugun {hozir.day}-{oy_nomi}, {hozir.year}-yil")
+    return hozir
+
+
+def hafta_kunini_aytish():
+    """Bugun haftaning qaysi kuni ekanini aytadi."""
+    indeks = datetime.date.today().weekday()
+    gapir(f"Bugun {HAFTA_KUNLARI[indeks]}")
+    return HAFTA_KUNLARI[indeks]
+
+
+def yil_faslini_aytish():
+    """Joriy fasl (qish, bahor, yoz, kuz) nomini aytadi."""
+    oy = datetime.date.today().month
+    gapir(f"Hozir {FASLLAR[oy]} fasli")
+    return FASLLAR[oy]
+
+
+def kungacha_qolgan_kunlar(maqsad_sana_str):
+    """'YYYY-MM-DD' formatidagi sanagacha necha kun qolganini
+    hisoblaydi va aytadi."""
+    try:
+        maqsad = datetime.datetime.strptime(maqsad_sana_str.strip(), "%Y-%m-%d").date()
+    except ValueError:
+        gapir("Sanani 'YYYY-MM-DD' formatida kiriting, masalan: 2026-09-01")
+        return None
+    qolgan = (maqsad - datetime.date.today()).days
+    if qolgan > 0:
+        gapir(f"{maqsad_sana_str} sanasigacha {qolgan} kun qoldi")
+    elif qolgan == 0:
+        gapir("Bu — bugungi sana!")
+    else:
+        gapir(f"Bu sana {abs(qolgan)} kun oldin o'tib ketgan")
+    return qolgan
+
+
+def yoshni_hisoblash(tugilgan_sana_str):
+    """'YYYY-MM-DD' formatidagi tug'ilgan sanaga ko'ra hozirgi yoshni
+    hisoblab, aytadi."""
+    try:
+        tugilgan = datetime.datetime.strptime(tugilgan_sana_str.strip(), "%Y-%m-%d").date()
+    except ValueError:
+        gapir("Sanani 'YYYY-MM-DD' formatida kiriting, masalan: 2000-05-20")
+        return None
+    bugun = datetime.date.today()
+    yosh = bugun.year - tugilgan.year - (
+        (bugun.month, bugun.day) < (tugilgan.month, tugilgan.day)
+    )
+    gapir(f"Siz {yosh} yoshdasiz")
+    return yosh
+
+
+# ======================================================================
+# 4-QISM: INTERNET — QIDIRUV, OB-HAVO, VALYUTA
+# ======================================================================
+
+MASHHUR_SAYTLAR = {
+    "youtube": "https://youtube.com",
+    "telegram": "https://web.telegram.org",
+    "instagram": "https://instagram.com",
+    "gmail": "https://mail.google.com",
+    "facebook": "https://facebook.com",
+    "wikipedia": "https://uz.wikipedia.org",
+    "vikipediya": "https://uz.wikipedia.org",
+}
+
+
+def google_qidiruv(soz):
+    """Google qidiruv tizimida berilgan so'zni qidiradi (natija
+    brauzerda ochiladi)."""
+    soz = (soz or "").strip()
+    if not soz:
+        gapir("Nimani qidirishni aytmadingiz.")
+        return
+    url = f"https://www.google.com/search?q={quote(soz)}"
+    webbrowser.open(url)
+    gapir(f"Google'da \"{soz}\" bo'yicha qidiryapman.")
+
+
+def youtube_qidiruv(soz):
+    """YouTube'da berilgan so'z bo'yicha video qidiradi."""
+    soz = (soz or "").strip()
+    if not soz:
+        gapir("Nimani qidirishni aytmadingiz.")
+        return
+    url = f"https://www.youtube.com/results?search_query={quote(soz)}"
+    webbrowser.open(url)
+    gapir(f"YouTube'da \"{soz}\" bo'yicha qidiryapman.")
+
+
+def wikipedia_qidiruv(soz):
+    """O'zbekcha Vikipediyadan berilgan mavzu bo'yicha qisqacha
+    ma'lumot olib, aytib beradi."""
+    soz = (soz or "").strip()
+    if not soz:
+        gapir("Qaysi mavzuni qidirishni aytmadingiz.")
+        return
+    try:
+        url = "https://uz.wikipedia.org/w/api.php"
+        parametrlar = {
+            "action": "query", "format": "json", "prop": "extracts",
+            "exintro": True, "explaintext": True, "redirects": 1,
+            "titles": soz,
+        }
+        javob = requests.get(url, params=parametrlar, timeout=10)
+        sahifalar = javob.json().get("query", {}).get("pages", {})
+        for sahifa in sahifalar.values():
+            matn = sahifa.get("extract", "").strip()
+            if matn:
+                gapir(matn[:500])
+                return matn
+        gapir("Afsuski, bu mavzu bo'yicha Vikipediyada ma'lumot topilmadi.")
+    except Exception as e:
+        gapir("Vikipediyaga ulanishda xatolik yuz berdi.")
+        print(f"[Xato: {e}]")
+    return None
+
+
+def xarita_ochish(joy):
+    """Berilgan joy nomini Google Xaritada ochadi."""
+    joy = (joy or "").strip()
+    if not joy:
+        gapir("Qaysi joyni xaritada ko'rsatishni aytmadingiz.")
+        return
+    url = f"https://www.google.com/maps/search/{quote(joy)}"
+    webbrowser.open(url)
+    gapir(f"{joy} joylashuvini xaritada ochyapman.")
+
+
+def obhavo_korsatish(shahar):
+    """wttr.in xizmati orqali berilgan shahar ob-havosini aytadi."""
+    shahar = (shahar or "").strip() or "Tashkent"
+    try:
+        url = f"https://wttr.in/{quote(shahar)}?format=j1"
+        javob = requests.get(url, timeout=10)
+        malumot = javob.json()
+        joriy = malumot["current_condition"][0]
+        harorat = joriy["temp_C"]
+        holat = joriy.get("weatherDesc", [{"value": ""}])[0]["value"]
+        gapir(f"{shahar} shahrida hozir harorat {harorat} gradus, holat: {holat}")
+        return harorat
+    except Exception as e:
+        gapir("Ob-havo ma'lumotini olib bo'lmadi, internetni tekshiring.")
+        print(f"[Xato: {e}]")
+        return None
+
+
+def valyuta_kursi(dan, ga="UZS", miqdor=1):
+    """Ikki valyuta orasidagi kursni ko'rsatadi (masalan USD -> UZS)."""
+    dan, ga = dan.strip().upper(), ga.strip().upper()
+    try:
+        url = f"https://api.exchangerate-api.com/v4/latest/{dan}"
+        javob = requests.get(url, timeout=10)
+        kurslar = javob.json().get("rates", {})
+        if ga not in kurslar:
+            gapir(f"{ga} valyutasi topilmadi.")
+            return None
+        natija = kurslar[ga] * miqdor
+        gapir(f"{miqdor} {dan} = {natija:,.2f} {ga}")
+        return natija
+    except Exception as e:
+        gapir("Valyuta kursini olib bo'lmadi, internetni tekshiring.")
+        print(f"[Xato: {e}]")
+        return None
+
+
+def ip_manzilni_korsatish():
+    """Kompyuterning tashqi (public) IP manzilini ko'rsatadi."""
+    try:
+        javob = requests.get("https://api.ipify.org?format=json", timeout=8)
+        ip = javob.json().get("ip", "noma'lum")
+        gapir(f"Sizning tashqi IP manzilingiz: {ip}")
+        return ip
+    except Exception:
+        gapir("IP manzilni aniqlab bo'lmadi, internetni tekshiring.")
+        return None
+
+
+def internet_holatini_tekshirish():
+    """Internetga ulanish mavjudligini tekshiradi."""
+    try:
+        requests.get("https://www.google.com", timeout=5)
+        gapir("Internet aloqasi bor.")
+        return True
+    except Exception:
+        gapir("Internet aloqasi yo'q yoki juda sekin.")
+        return False
+
+
+def sayt_ochish(nomi):
+    """Mashhur saytlardan birini nomi bo'yicha ochadi (youtube, telegram
+    va h.k.). Topilmasa, Google orqali qidiradi."""
+    nomi = (nomi or "").strip().lower()
+    if nomi in MASHHUR_SAYTLAR:
+        webbrowser.open(MASHHUR_SAYTLAR[nomi])
+        gapir(f"{nomi.capitalize()} ochilyapti.")
+    else:
+        gapir(f"\"{nomi}\" saytini topa olmadim, Google orqali qidirib ko'raman.")
+        google_qidiruv(nomi)
+
+
+# ======================================================================
+# 5-QISM: FAYL VA PAPKALAR
+# ======================================================================
+
+def _ochish(yol):
+    """Berilgan fayl/papkani operatsion tizimning standart vositasi
+    bilan ochadigan ichki yordamchi funksiya."""
+    system = platform.system()
+    if system == "Windows":
+        os.startfile(yol)  # noqa
+    elif system == "Darwin":
+        subprocess.run(["open", yol], check=False)
+    else:
+        subprocess.run(["xdg-open", yol], check=False)
+
+
+def fayl_yuklash(url, fayl_nomi=None):
+    """Internetdagi to'g'ridan-to'g'ri (direct) link orqali faylni
+    yuklab, Yuklamalar papkasiga saqlaydi."""
+    papkalarni_tayyorlash()
+    try:
+        gapir("Fayl yuklanyapti, biroz kuting.")
+        javob = requests.get(url, stream=True, timeout=30,
+                              headers={"User-Agent": "Mozilla/5.0"})
+        javob.raise_for_status()
+        if not fayl_nomi:
+            fayl_nomi = url.split("?")[0].rstrip("/").split("/")[-1] or "yuklangan_fayl"
+        toliq_yol = os.path.join(YUKLAMALAR_PAPKA, fayl_nomi)
+        with open(toliq_yol, "wb") as f:
+            for qism in javob.iter_content(chunk_size=8192):
+                if qism:
+                    f.write(qism)
+        gapir(f"Fayl muvaffaqiyatli yuklandi: {fayl_nomi}")
+        return toliq_yol
+    except Exception as e:
+        gapir("Faylni yuklashda xatolik yuz berdi.")
+        print(f"[Xato: {e}]")
+        return None
+
+
+def papkani_ochish(yol=None):
+    """Berilgan papkani (yoki standart Yuklamalar papkasini) ochadi."""
+    yol = yol or YUKLAMALAR_PAPKA
+    if not os.path.isdir(yol):
+        gapir("Bunday papka topilmadi.")
+        return False
+    try:
+        _ochish(yol)
+        gapir("Papka ochildi.")
+        return True
+    except Exception as e:
+        gapir(f"Papkani ochib bo'lmadi: {e}")
+        return False
+
+
+def yuklamalar_papkasini_ochish():
+    """Jarvis'ning Yuklamalar papkasini ochadi (yo'q bo'lsa, yaratadi)."""
+    papkalarni_tayyorlash()
+    return papkani_ochish(YUKLAMALAR_PAPKA)
+
+
+def fayl_ochish(yol):
+    """Berilgan faylni standart dastur bilan ochadi."""
+    if not os.path.isfile(yol):
+        gapir("Bunday fayl topilmadi.")
+        return False
+    try:
+        _ochish(yol)
+        gapir("Fayl ochildi.")
+        return True
+    except Exception as e:
+        gapir(f"Faylni ochib bo'lmadi: {e}")
+        return False
+
+
+def fayl_ochirish(yol):
+    """Berilgan faylni butunlay o'chiradi. DIQQAT: bu amalni qaytarib
+    bo'lmaydi."""
+    if not os.path.isfile(yol):
+        gapir("Bunday fayl topilmadi.")
+        return False
+    try:
+        os.remove(yol)
+        gapir("Fayl o'chirildi.")
+        return True
+    except Exception as e:
+        gapir(f"Faylni o'chirib bo'lmadi: {e}")
+        return False
+
+
+def fayl_nusxalash(manba, manzil):
+    """Faylni bir joydan ikkinchi joyga nusxalaydi (asl fayl joyida
+    qoladi)."""
+    if not os.path.isfile(manba):
+        gapir("Manba fayl topilmadi.")
+        return False
+    try:
+        shutil.copy2(manba, manzil)
+        gapir("Fayl nusxalandi.")
+        return True
+    except Exception as e:
+        gapir(f"Nusxalashda xato: {e}")
+        return False
+
+
+def fayl_kochirish(manba, manzil):
+    """Faylni bir joydan ikkinchi joyga ko'chiradi (asl joyidan
+    o'chadi)."""
+    if not os.path.isfile(manba):
+        gapir("Manba fayl topilmadi.")
+        return False
+    try:
+        shutil.move(manba, manzil)
+        gapir("Fayl ko'chirildi.")
+        return True
+    except Exception as e:
+        gapir(f"Ko'chirishda xato: {e}")
+        return False
+
+
+def papka_yaratish(yol):
+    """Berilgan nomda yangi papka yaratadi."""
+    try:
+        os.makedirs(yol, exist_ok=True)
+        gapir("Papka yaratildi.")
+        return True
+    except Exception as e:
+        gapir(f"Papka yaratib bo'lmadi: {e}")
+        return False
+
+
+def fayllarni_royxatlash(papka=None):
+    """Berilgan papkadagi (yoki Yuklamalar papkasidagi) fayllar
+    ro'yxatini chiqaradi."""
+    papka = papka or YUKLAMALAR_PAPKA
+    if not os.path.isdir(papka):
+        gapir("Bunday papka topilmadi.")
+        return []
+    fayllar = os.listdir(papka)
+    if not fayllar:
+        gapir("Papka bo'sh.")
+        return []
+    gapir(f"Papkada {len(fayllar)} ta element bor.")
+    for f in fayllar:
+        print(f"  - {f}")
+    return fayllar
+
+
+def fayl_hajmini_korsatish(yol):
+    """Berilgan faylning hajmini (MB da) ko'rsatadi."""
+    if not os.path.isfile(yol):
+        gapir("Bunday fayl topilmadi.")
+        return None
+    hajm_mb = os.path.getsize(yol) / (1024 * 1024)
+    gapir(f"Fayl hajmi: {hajm_mb:.2f} MB")
+    return hajm_mb
+
+
+def matnni_faylga_saqlash(matn, fayl_nomi="yozuv.txt"):
+    """Berilgan matnni Yuklamalar papkasidagi faylga yozadi."""
+    papkalarni_tayyorlash()
+    toliq_yol = os.path.join(YUKLAMALAR_PAPKA, fayl_nomi)
+    try:
+        with open(toliq_yol, "w", encoding="utf-8") as f:
+            f.write(matn)
+        gapir(f"Matn saqlandi: {fayl_nomi}")
+        return toliq_yol
+    except Exception as e:
+        gapir(f"Matnni saqlab bo'lmadi: {e}")
+        return None
+# ======================================================================
+# 6-QISM: TIZIM (OS) — RAM, CPU, BATAREYA VA H.K.
+# ======================================================================
+
+def tizim_malumotlari():
+    """Operatsion tizim va Python versiyasi haqida ma'lumot beradi."""
+    nom = platform.system()
+    python_versiyasi = platform.python_version()
+    gapir(f"Tizim: {nom}, Python versiyasi: {python_versiyasi}")
+    return {"tizim": nom, "python": python_versiyasi}
+
+
+def ram_holati():
+    """RAM (operativ xotira) ishlatilishini foizda ko'rsatadi."""
+    if not PSUTIL_BOR:
+        gapir("Bu funksiya uchun 'psutil' kutubxonasi kerak (pip install psutil).")
+        return None
+    foiz = psutil.virtual_memory().percent
+    gapir(f"RAM xotirasi {foiz} foiz band.")
+    return foiz
+
+
+def cpu_holati():
+    """Protsessor (CPU) yuklanish darajasini foizda ko'rsatadi."""
+    if not PSUTIL_BOR:
+        gapir("Bu funksiya uchun 'psutil' kutubxonasi kerak (pip install psutil).")
+        return None
+    foiz = psutil.cpu_percent(interval=1)
+    gapir(f"Protsessor {foiz} foiz band.")
+    return foiz
+
+
+def disk_bosh_joyi(yol=None):
+    """Berilgan diskdagi bo'sh joy hajmini (GB) ko'rsatadi."""
+    try:
+        if yol is None:
+            yol = "C:\\" if platform.system() == "Windows" else "/"
+        umumiy, band, bosh = shutil.disk_usage(yol)
+        bosh_gb = bosh / (1024 ** 3)
+        umumiy_gb = umumiy / (1024 ** 3)
+        gapir(f"Diskda {bosh_gb:.1f} GB bo'sh joy bor (jami {umumiy_gb:.1f} GB dan).")
+        return bosh_gb
+    except Exception as e:
+        gapir(f"Disk ma'lumotini olib bo'lmadi: {e}")
+        return None
+
+
+def batareya_holati():
+    """Noutbuk batareyasi holatini foizda ko'rsatadi (mavjud bo'lsa)."""
+    if not PSUTIL_BOR:
+        gapir("Bu funksiya uchun 'psutil' kutubxonasi kerak (pip install psutil).")
+        return None
+    batareya = psutil.sensors_battery()
+    if batareya is None:
+        gapir("Bu qurilmada batareya topilmadi (ehtimol, statsionar kompyuter).")
+        return None
+    holat = "quvvatlanyapti" if batareya.power_plugged else "quvvatlanmayapti"
+    gapir(f"Batareya {batareya.percent} foiz, {holat}.")
+    return batareya.percent
+
+
+def skrinshot_olish(fayl_nomi=None):
+    """Ekran rasmini (skrinshot) olib, Yuklamalar papkasiga saqlaydi."""
+    if not PYAUTOGUI_BOR:
+        gapir("Bu funksiya uchun 'pyautogui' kutubxonasi kerak (pip install pyautogui).")
+        return None
+    fayl_nomi = fayl_nomi or f"skrinshot_{int(time.time())}.png"
+    toliq_yol = os.path.join(YUKLAMALAR_PAPKA, fayl_nomi)
+    try:
+        os.makedirs(YUKLAMALAR_PAPKA, exist_ok=True)
+        rasm = pyautogui.screenshot()
+        rasm.save(toliq_yol)
+        gapir(f"Skrinshot saqlandi: {fayl_nomi}")
+        return toliq_yol
+    except Exception as e:
+        gapir(f"Skrinshot olishda xato: {e}")
+        return None
+
+
+def clipboardga_nusxalash(matn):
+    """Berilgan matnni tizim almashinish buferiga (clipboard)
+    nusxalaydi."""
+    if not PYPERCLIP_BOR:
+        gapir("Bu funksiya uchun 'pyperclip' kutubxonasi kerak (pip install pyperclip).")
+        return False
+    try:
+        pyperclip.copy(matn)
+        gapir("Matn clipboard'ga nusxalandi.")
+        return True
+    except Exception as e:
+        gapir(f"Nusxalashda xato: {e}")
+        return False
+
+
+def clipboarddan_oqish():
+    """Tizim almashinish buferidagi (clipboard) matnni o'qib, aytadi."""
+    if not PYPERCLIP_BOR:
+        gapir("Bu funksiya uchun 'pyperclip' kutubxonasi kerak (pip install pyperclip).")
+        return None
+    try:
+        matn = pyperclip.paste()
+        gapir(f"Clipboard'dagi matn: {matn}")
+        return matn
+    except Exception as e:
+        gapir(f"O'qishda xato: {e}")
+        return None
+
+
+_DASTURLAR = {
+    "windows": {"kalkulyator": "calc.exe", "bloknot": "notepad.exe",
+                "brauzer": "start chrome"},
+    "darwin": {"kalkulyator": "open -a Calculator", "bloknot": "open -a TextEdit",
+               "brauzer": "open -a Safari"},
+    "linux": {"kalkulyator": "gnome-calculator", "bloknot": "gedit",
+              "brauzer": "xdg-open https://google.com"},
+}
+
+
+def dastur_ochish(nomi):
+    """Kompyuterdagi keng tarqalgan dasturni (kalkulyator, bloknot,
+    brauzer) nomi bo'yicha ochadi."""
+    tizim = platform.system().lower()
+    royxat = _DASTURLAR.get(tizim, {})
+    buyruq = royxat.get((nomi or "").strip().lower())
+    if not buyruq:
+        gapir(f"\"{nomi}\" dasturini qanday ochishni bilmayman.")
+        return False
+    try:
+        subprocess.Popen(buyruq, shell=True)
+        gapir(f"{nomi.capitalize()} ochilyapti.")
+        return True
+    except Exception as e:
+        gapir(f"Dasturni ochib bo'lmadi: {e}")
+        return False
+
+
+def dasturni_yopish(nomi):
+    """Berilgan nom bo'yicha ishlayotgan jarayonni (processni)
+    to'xtatadi."""
+    if not PSUTIL_BOR:
+        gapir("Bu funksiya uchun 'psutil' kutubxonasi kerak (pip install psutil).")
+        return False
+    nomi = (nomi or "").strip().lower()
+    topildi = False
+    for jarayon in psutil.process_iter(["pid", "name"]):
+        if nomi and nomi in (jarayon.info["name"] or "").lower():
+            try:
+                jarayon.terminate()
+                topildi = True
+            except Exception:
+                pass
+    gapir(f"\"{nomi}\" dasturi yopildi." if topildi else f"\"{nomi}\" nomli ishlayotgan dastur topilmadi.")
+    return topildi
+
+
+def kompyuterni_ochirish(tasdiqlandimi=False):
+    """Kompyuterni o'chiradi. Xavfsizlik uchun tasdiqlandimi=True talab
+    qilinadi."""
+    if not tasdiqlandimi:
+        gapir("Kompyuterni o'chirish uchun avval tasdiqlashingiz kerak.")
+        return False
+    gapir("Kompyuter 5 soniyadan so'ng o'chadi.")
+    system = platform.system()
+    try:
+        if system == "Windows":
+            subprocess.run(["shutdown", "/s", "/t", "5"])
+        elif system == "Darwin":
+            subprocess.run(["sudo", "shutdown", "-h", "+0"])
+        else:
+            subprocess.run(["shutdown", "-h", "now"])
+        return True
+    except Exception as e:
+        gapir(f"O'chirib bo'lmadi: {e}")
+        return False
+
+
+def kompyuterni_qayta_yuklash(tasdiqlandimi=False):
+    """Kompyuterni qayta yuklaydi. Xavfsizlik uchun tasdiqlandimi=True
+    talab qilinadi."""
+    if not tasdiqlandimi:
+        gapir("Qayta yuklash uchun avval tasdiqlashingiz kerak.")
+        return False
+    gapir("Kompyuter qayta yuklanmoqda.")
+    system = platform.system()
+    try:
+        if system == "Windows":
+            subprocess.run(["shutdown", "/r", "/t", "5"])
+        elif system == "Darwin":
+            subprocess.run(["sudo", "shutdown", "-r", "now"])
+        else:
+            subprocess.run(["reboot"])
+        return True
+    except Exception as e:
+        gapir(f"Qayta yuklab bo'lmadi: {e}")
+        return False
+
+
+def ekranni_qulflash():
+    """Kompyuter ekranini qulflaydi."""
+    system = platform.system()
+    try:
+        if system == "Windows":
+            subprocess.run(["rundll32.exe", "user32.dll,LockWorkStation"])
+        elif system == "Darwin":
+            subprocess.run(["pmset", "displaysleepnow"])
+        else:
+            subprocess.run(["xdg-screensaver", "lock"])
+        gapir("Ekran qulflandi.")
+        return True
+    except Exception as e:
+        gapir(f"Ekranni qulflab bo'lmadi: {e}")
+        return False
+
+
+# ======================================================================
+# 7-QISM: ESLATMALAR, VAZIFALAR, KUNDALIK
+# ======================================================================
+
+def eslatma_qoshish(matn):
+    """Yangi eslatma qo'shadi."""
+    matn = (matn or "").strip()
+    if not matn:
+        gapir("Eslatma matni bo'sh bo'lmasligi kerak.")
+        return False
+    faylga_qator_qoshish(ESLATMALAR_FAYLI, matn)
+    gapir("Eslatma qo'shildi.")
+    return True
+
+
+def eslatmalarni_korsatish():
+    """Barcha saqlangan eslatmalarni ko'rsatadi."""
+    eslatmalar = fayldan_qatorlarni_oqish(ESLATMALAR_FAYLI)
+    if not eslatmalar:
+        gapir("Hozircha hech qanday eslatma yo'q.")
+        return []
+    gapir(f"Sizda {len(eslatmalar)} ta eslatma bor:")
+    for i, e in enumerate(eslatmalar, 1):
+        print(f"  {i}. {e}")
+    return eslatmalar
+
+
+def eslatmani_ochirish(raqam):
+    """Berilgan tartib raqamdagi eslatmani o'chiradi (1 dan
+    boshlanadi)."""
+    eslatmalar = fayldan_qatorlarni_oqish(ESLATMALAR_FAYLI)
+    if raqam is None or not (1 <= raqam <= len(eslatmalar)):
+        gapir("Bunday raqamli eslatma topilmadi.")
+        return False
+    ochirilgan = eslatmalar.pop(raqam - 1)
+    faylga_qatorlarni_yozish(ESLATMALAR_FAYLI, eslatmalar)
+    gapir(f"O'chirildi: {ochirilgan}")
+    return True
+
+
+def barcha_eslatmalarni_ochirish():
+    """Barcha eslatmalarni butunlay tozalaydi."""
+    faylga_qatorlarni_yozish(ESLATMALAR_FAYLI, [])
+    gapir("Barcha eslatmalar o'chirildi.")
+    return True
+
+
+def vazifa_qoshish(matn):
+    """Yangi vazifa (to-do) qo'shadi, boshlang'ich holati
+    'bajarilmagan' bo'ladi."""
+    matn = (matn or "").strip()
+    if not matn:
+        gapir("Vazifa matni bo'sh bo'lmasligi kerak.")
+        return False
+    faylga_qator_qoshish(VAZIFALAR_FAYLI, f"[ ] {matn}")
+    gapir("Vazifa qo'shildi.")
+    return True
+
+
+def vazifalarni_korsatish():
+    """Barcha vazifalarni holati bilan birga ko'rsatadi."""
+    vazifalar = fayldan_qatorlarni_oqish(VAZIFALAR_FAYLI)
+    if not vazifalar:
+        gapir("Hozircha hech qanday vazifa yo'q.")
+        return []
+    gapir(f"Sizda {len(vazifalar)} ta vazifa bor:")
+    for i, v in enumerate(vazifalar, 1):
+        print(f"  {i}. {v}")
+    return vazifalar
+
+
+def vazifani_bajarildi_deb_belgilash(raqam):
+    """Berilgan tartib raqamdagi vazifani 'bajarildi' deb belgilaydi."""
+    vazifalar = fayldan_qatorlarni_oqish(VAZIFALAR_FAYLI)
+    if raqam is None or not (1 <= raqam <= len(vazifalar)):
+        gapir("Bunday raqamli vazifa topilmadi.")
+        return False
+    vazifalar[raqam - 1] = vazifalar[raqam - 1].replace("[ ]", "[x]", 1)
+    faylga_qatorlarni_yozish(VAZIFALAR_FAYLI, vazifalar)
+    gapir("Vazifa bajarildi deb belgilandi.")
+    return True
+
+
+def vazifani_ochirish(raqam):
+    """Berilgan tartib raqamdagi vazifani ro'yxatdan butunlay
+    o'chiradi."""
+    vazifalar = fayldan_qatorlarni_oqish(VAZIFALAR_FAYLI)
+    if raqam is None or not (1 <= raqam <= len(vazifalar)):
+        gapir("Bunday raqamli vazifa topilmadi.")
+        return False
+    ochirilgan = vazifalar.pop(raqam - 1)
+    faylga_qatorlarni_yozish(VAZIFALAR_FAYLI, vazifalar)
+    gapir(f"O'chirildi: {ochirilgan}")
+    return True
+
+
+def kundalik_yozish(matn):
+    """Kundalikka sana bilan birga yangi yozuv qo'shadi."""
+    matn = (matn or "").strip()
+    if not matn:
+        gapir("Kundalik matni bo'sh bo'lmasligi kerak.")
+        return False
+    faylga_qator_qoshish(KUNDALIK_FAYLI, f"{vaqt_belgisi()} — {matn}")
+    gapir("Kundalikka yozildi.")
+    return True
+
+
+def kundalikni_oqish(oxirgi_nechta=5):
+    """Kundalikdagi so'nggi yozuvlarni ko'rsatadi."""
+    yozuvlar = fayldan_qatorlarni_oqish(KUNDALIK_FAYLI)
+    if not yozuvlar:
+        gapir("Kundalik hali bo'sh.")
+        return []
+    songgi = yozuvlar[-oxirgi_nechta:]
+    gapir(f"So'nggi {len(songgi)} ta kundalik yozuvi:")
+    for y in songgi:
+        print(f"  - {y}")
+    return songgi
+
+# ======================================================================
+# 8-QISM: O'YIN-KULGI VA KALKULYATOR
+# ======================================================================
+
+HAZILLAR = [
+    "Nega kompyuter sovuq qotdi? Chunki Windows oynasini ochib qo'yishgan edi!",
+    "Dasturchi nega tashqariga chiqmaydi? Chunki u 'bug'larni yaxshi ko'radi!",
+    "Eng tez dasturlash tili qaysi? 'Aql' tili, lekin uni hech kim o'rganolmaydi.",
+    "Nega Python dasturchisi muzlab qolmaydi? Chunki uning kodida ko'p 'import' bor!",
+]
+
+IQTIBOSLAR = [
+    "Bilim — kuch, lekin uni qo'llash — donolik.",
+    "Har bir kichik qadam, katta yo'lning boshlanishidir.",
+    "Muvaffaqiyat — har kuni biroz yaxshilanishdir.",
+    "Vaqtni boy berish — hayotni boy berishdir.",
+]
+
+MAQOLLAR = [
+    "Mehnat qilsang — rohat ko'rasan.",
+    "Yaxshilik qil, daryoga tashla, baliq bilmasa, xoliq biladi.",
+    "Bilim — chashmadek, qancha ko'p ichsang, shuncha tiniqlashadi.",
+]
+
+
+def hazil_aytish():
+    """Tasodifiy hazil aytadi."""
+    natija = random.choice(HAZILLAR)
+    gapir(natija)
+    return natija
+
+
+def iqtibos_aytish():
+    """Tasodifiy ilhomlantiruvchi iqtibos aytadi."""
+    natija = random.choice(IQTIBOSLAR)
+    gapir(natija)
+    return natija
+
+
+def maqol_aytish():
+    """Tasodifiy o'zbek maqolini aytadi."""
+    natija = random.choice(MAQOLLAR)
+    gapir(natija)
+    return natija
+
+
+def tanga_otish():
+    """Tanga otib, 'Rashka' yoki 'Yozuv' natijasini aytadi."""
+    natija = random.choice(["Rashka", "Yozuv"])
+    gapir(f"Tanga otildi: {natija}")
+    return natija
+
+
+def zar_otish(qirralar=6):
+    """Zar (kub) otib, tasodifiy raqam chiqaradi."""
+    natija = random.randint(1, qirralar)
+    gapir(f"Zar natijasi: {natija}")
+    return natija
+
+
+def tasodifiy_son(minimum=1, maksimum=100):
+    """Berilgan oraliqda tasodifiy son chiqaradi."""
+    natija = random.randint(minimum, maksimum)
+    gapir(f"Tasodifiy son: {natija}")
+    return natija
+
+
+def tosh_qaychi_qogoz(foydalanuvchi_tanlovi):
+    """Tosh-qaychi-qog'oz o'yinini bir bor o'ynaydi."""
+    variantlar = ["tosh", "qaychi", "qog'oz"]
+    tanlov = (foydalanuvchi_tanlovi or "").strip().lower()
+    if tanlov not in variantlar:
+        gapir("Iltimos, 'tosh', 'qaychi' yoki 'qog'oz' deb ayting.")
+        return None
+    kompyuter = random.choice(variantlar)
+    if tanlov == kompyuter:
+        natija = "Durrang!"
+    elif (
+        (tanlov == "tosh" and kompyuter == "qaychi")
+        or (tanlov == "qaychi" and kompyuter == "qog'oz")
+        or (tanlov == "qog'oz" and kompyuter == "tosh")
+    ):
+        natija = "Siz yutdingiz!"
+    else:
+        natija = "Men yutdim!"
+    gapir(f"Men: {kompyuter}. Natija: {natija}")
+    return natija
+
+
+def tabrik_aytish(bayram="tug'ilgan kun"):
+    """Berilgan bayram bilan tabriklaydi."""
+    gapir(f"{bayram.capitalize()} bilan tabriklayman! Baxtli kunlar tilayman!")
+
+
+# ---------------- Kalkulyator va birlik konvertatsiyasi ----------------
+
+_RUXSAT_ETILGAN_BELGILAR = re.compile(r"^[\d\.\+\-\*\/\(\)\s%]+$")
+
+
+def kalkulyator(ifoda):
+    """Oddiy matematik ifodani xavfsiz hisoblaydi (faqat raqam va
+    +, -, *, /, (), % belgilariga ruxsat beriladi)."""
+    ifoda = (ifoda or "").strip()
+    if not ifoda or not _RUXSAT_ETILGAN_BELGILAR.match(ifoda):
+        gapir("Bu ifodani hisoblay olmayman, faqat oddiy matematik amallarni qo'llab-quvvatlayman.")
+        return None
+    try:
+        natija = eval(ifoda, {"__builtins__": {}}, {})
+        gapir(f"Natija: {natija}")
+        return natija
+    except Exception:
+        gapir("Hisoblashda xatolik, ifodani tekshirib qaytadan urinib ko'ring.")
+        return None
+
+
+def km_dan_milga(qiymat):
+    """Kilometrni milyaga aylantiradi."""
+    natija = qiymat * 0.621371
+    gapir(f"{qiymat} km = {natija:.2f} milya")
+    return natija
+
+
+def mil_dan_kmga(qiymat):
+    """Milyani kilometrga aylantiradi."""
+    natija = qiymat / 0.621371
+    gapir(f"{qiymat} milya = {natija:.2f} km")
+    return natija
+
+
+def kg_dan_funtga(qiymat):
+    """Kilogrammni funtga aylantiradi."""
+    natija = qiymat * 2.20462
+    gapir(f"{qiymat} kg = {natija:.2f} funt")
+    return natija
+
+
+def funt_dan_kgga(qiymat):
+    """Funtni kilogrammga aylantiradi."""
+    natija = qiymat / 2.20462
+    gapir(f"{qiymat} funt = {natija:.2f} kg")
+    return natija
+
+
+def celsiy_dan_farengeytga(qiymat):
+    """Selsiyni Farengeytga aylantiradi."""
+    natija = qiymat * 9 / 5 + 32
+    gapir(f"{qiymat} gradus Selsiy = {natija:.1f} gradus Farengeyt")
+    return natija
+
+
+def farengeyt_dan_celsiyga(qiymat):
+    """Farengeytni Selsiyga aylantiradi."""
+    natija = (qiymat - 32) * 5 / 9
+    gapir(f"{qiymat} gradus Farengeyt = {natija:.1f} gradus Selsiy")
+    return natija
+
+
+def metr_dan_futga(qiymat):
+    """Metrni futga aylantiradi."""
+    natija = qiymat * 3.28084
+    gapir(f"{qiymat} metr = {natija:.2f} fut")
+    return natija
+
+
+def fut_dan_metrga(qiymat):
+    """Futni metrga aylantiradi."""
+    natija = qiymat / 3.28084
+    gapir(f"{qiymat} fut = {natija:.2f} metr")
+    return natija
+
+
+def foiz_hisoblash(son, foiz):
+    """Berilgan sonning necha foizini hisoblaydi."""
+    natija = son * foiz / 100
+    gapir(f"{son} ning {foiz} foizi = {natija:.2f}")
+    return natija
+
+
+def soz_talaffuz_qilish(soz):
+    """Berilgan so'zni harflab, bittama-bitta aytadi (imlo o'rgatish
+    uchun)."""
+    soz = (soz or "").strip()
+    harflar = " - ".join(list(soz))
+    gapir(f"{soz}: {harflar}")
+    return harflar
+
+
+# ======================================================================
+# 9-QISM: BUYRUQLARNI TUSHUNUVCHI DISPATCHER
+# ======================================================================
+
+ASSISTANT_NAME = "Jarvis"
+
+
+def parametrni_olish(matn, olib_tashlanadigan_sozlar):
+    """Matndan berilgan kalit so'z/iboralarni olib tashlab, qolgan
+    qismini (taxminiy parametrni) qaytaradi."""
+    natija = matn
+    for soz in olib_tashlanadigan_sozlar:
+        natija = natija.replace(soz, "")
+    return natija.strip(" :,.-")
+
+
+def raqamni_topish(matn):
+    """Matn ichidan birinchi butun sonni topib qaytaradi (topilmasa
+    None)."""
+    mos = re.search(r"-?\d+", matn)
+    return int(mos.group()) if mos else None
+
+
+def sanani_topish(matn):
+    """Matn ichidan 'YYYY-MM-DD' formatidagi sanani topib qaytaradi."""
+    mos = re.search(r"\d{4}-\d{2}-\d{2}", matn)
+    return mos.group() if mos else None
+
+
+def sonni_topish(matn):
+    """Matn ichidan birinchi o'nlik/butun sonni (float sifatida) topib
+    qaytaradi (topilmasa None)."""
+    mos = re.search(r"-?\d+(?:\.\d+)?", matn)
+    return float(mos.group()) if mos else None
+
+
+def matematik_ifodani_topish(matn):
+    """Matn ichidan faqat raqam va matematik amal belgilaridan iborat
+    bo'lgan eng uzun bo'lakni topib qaytaradi (atrofidagi o'zbekcha
+    so'zlarni e'tiborsiz qoldiradi)."""
+    mos = re.search(r"\d[\d\.\+\-\*\/\(\)\s%]*[\d\)]|\d", matn)
+    return mos.group().strip() if mos else ""
+
+
+# ---------------------- Handler funksiyalari ----------------------
+
+def _h_salom(matn):
+    gapir(f"Va alaykum assalom! Men {ASSISTANT_NAME}, sizga qanday yordam bera olaman?")
+
+
+def _h_kim_san(matn):
+    gapir(f"Men sizning shaxsiy yordamchingizman, ismim {ASSISTANT_NAME}.")
+
+
+def _h_vaqt(matn):
+    vaqtni_aytish()
+
+
+def _h_sana(matn):
+    sanani_aytish()
+
+
+def _h_hafta_kuni(matn):
+    hafta_kunini_aytish()
+
+
+def _h_fasl(matn):
+    yil_faslini_aytish()
+
+
+def _h_kungacha(matn):
+    sana = sanani_topish(matn)
+    if sana:
+        kungacha_qolgan_kunlar(sana)
+    else:
+        gapir("Sanani 'YYYY-MM-DD' formatida ayting, masalan 2026-09-01.")
+
+
+def _h_yosh(matn):
+    sana = sanani_topish(matn)
+    if sana:
+        yoshni_hisoblash(sana)
+    else:
+        gapir("Tug'ilgan sanangizni 'YYYY-MM-DD' formatida ayting.")
+
+
+def _h_wikipedia(matn):
+    soz = parametrni_olish(matn, [
+        "vikipediyadan", "wikipediadan", "vikipediya", "wikipedia",
+        "haqida malumot ber", "haqida ma'lumot ber", "haqida aytib ber",
+    ])
+    wikipedia_qidiruv(soz)
+
+
+def _h_youtube(matn):
+    soz = parametrni_olish(matn, ["youtube'da", "youtubeda", "youtube",
+                                   "video qidir", "qidir"])
+    youtube_qidiruv(soz)
+
+
+def _h_xarita(matn):
+    soz = parametrni_olish(matn, ["xaritada", "xaritani och", "xarita",
+                                   "qayerdaligini korsat"])
+    xarita_ochish(soz)
+
+
+def _h_obhavo(matn):
+    soz = parametrni_olish(matn, ["ob havosini", "ob-havosini", "ob havo",
+                                   "ob-havo", "havosini ayt", "qidir"])
+    obhavo_korsatish(soz or "Tashkent")
+
+
+def _h_valyuta(matn):
+    sozlar = matn.upper().split()
+    kodlar = [s for s in sozlar if len(s) == 3 and s.isalpha()]
+    if len(kodlar) >= 2:
+        valyuta_kursi(kodlar[0], kodlar[1])
+   if len(kodlar) == 1:
+        valyuta_kursi(kodlar[0], "UZS")
+    else:
+        gapir("Valyuta kodlarini ayting, masalan: 'USD UZS kursi'.")
+
+
+def _h_ip(matn):
+    ip_manzilni_korsatish()
+
+
+def _h_internet_holati(matn):
+    internet_holatini_tekshirish()
+
+
+def _h_sayt(matn):
+    soz = parametrni_olish(matn, ["ochib ber", "ochish", "sayt", "ni och", "och"])
+    sayt_ochish(soz)
+
+
+def _h_google(matn):
+    soz = parametrni_olish(matn, [
+        "google'dan", "googledan", "google orqali", "google'da",
+        "internetdan", "qidirib ber", "qidirib top", "qidir",
+    ])
+    google_qidiruv(soz)
+
+
+def _h_yuklash(matn):
+    sozlar = matn.split()
+    url = next((s for s in sozlar if s.startswith("http")), None)
+    if url:
+        fayl_yuklash(url)
+    else:
+        gapir("Yuklash uchun to'g'ri link (havola) topilmadi.")
+
+
+def _h_papka(matn):
+    yuklamalar_papkasini_ochish()
+
+
+def _h_fayllar_royxati(matn):
+    fayllarni_royxatlash()
+
+
+def _h_tizim(matn):
+    tizim_malumotlari()
+
+
+def _h_ram(matn):
+    ram_holati()
+
+
+def _h_cpu(matn):
+    cpu_holati()
+
+
+def _h_disk(matn):
+    disk_bosh_joyi()
+
+
+def _h_batareya(matn):
+    batareya_holati()
+
+
+def _h_skrinshot(matn):
+    skrinshot_olish()
+
+
+def _h_clipboard_yoz(matn):
+    soz = parametrni_olish(matn, ["nusxala", "clipboardga", "buferga"])
+    clipboardga_nusxalash(soz)
+
+
+def _h_clipboard_oqi(matn):
+    clipboarddan_oqish()
+
+
+def _h_dastur_ochish(matn):
+    soz = parametrni_olish(matn, ["ochib ber", "dasturini och", "dastur och", "och"])
+    dastur_ochish(soz)
+
+
+def _h_dastur_yopish(matn):
+    soz = parametrni_olish(matn, ["dasturini yop", "dastur yop", "yop"])
+    dasturni_yopish(soz)
+
+
+def _h_ochirish(matn):
+    gapir("Kompyuterni o'chirishni xohlaysizmi? Tasdiqlash uchun 'ha o'chir' deb ayting.")
+
+
+def _h_ochirish_tasdiq(matn):
+    kompyuterni_ochirish(tasdiqlandimi=True)
+
+
+def _h_qayta_yuklash(matn):
+    gapir("Kompyuterni qayta yuklashni xohlaysizmi? Tasdiqlash uchun 'ha qayta yukla' deb ayting.")
+
+
+def _h_qayta_yuklash_tasdiq(matn):
+    kompyuterni_qayta_yuklash(tasdiqlandimi=True)
+
+
+def _h_qulflash(matn):
+    ekranni_qulflash()
+
+
+def _h_eslatma_qoshish(matn):
+    soz = parametrni_olish(matn, ["eslatma qosh", "eslatib qoy", "eslatma"])
+    eslatma_qoshish(soz)
+
+
+def _h_eslatmalar(matn):
+    eslatmalarni_korsatish()
+
+
+def _h_eslatma_ochirish(matn):
+    raqam = raqamni_topish(matn)
+    if raqam:
+        eslatmani_ochirish(raqam)
+    else:
+        gapir("Qaysi raqamli eslatmani o'chirishni ayting.")
+
+
+def _h_vazifa_qoshish(matn):
+    soz = parametrni_olish(matn, ["vazifa qosh", "vazifalarga qosh", "vazifa"])
+    vazifa_qoshish(soz)
+
+
+def _h_vazifalar(matn):
+    vazifalarni_korsatish()
+
+
+def _h_vazifa_bajarildi(matn):
+    raqam = raqamni_topish(matn)
+    if raqam:
+        vazifani_bajarildi_deb_belgilash(raqam)
+    else:
+        gapir("Qaysi raqamli vazifa bajarilganini ayting.")
+
+
+def _h_kundalik_yoz(matn):
+    soz = parametrni_olish(matn, ["kundalikka yoz", "kundalik"])
+    kundalik_yozish(soz)
+
+
+def _h_kundalik_oqi(matn):
+    kundalikni_oqish()
+
+
+def _h_hazil(matn):
+    hazil_aytish()
+
+
+def _h_iqtibos(matn):
+    iqtibos_aytish()
+
+
+def _h_maqol(matn):
+    maqol_aytish()
+
+
+def _h_tanga(matn):
+    tanga_otish()
+
+
+def _h_zar(matn):
+    zar_otish()
+
+
+def _h_tasodifiy_son(matn):
+    tasodifiy_son()
+
+
+def _h_tqq(matn):
+    for variant in ["tosh", "qaychi", "qog'oz"]:
+        if variant in matn:
+            tosh_qaychi_qogoz(variant)
+            return
+    gapir("Tosh, qaychi yoki qog'ozdan birini tanlang.")
+
+
+def _h_kalkulyator(matn):
+    ifoda = matematik_ifodani_topish(matn)
+    if not ifoda:
+        gapir("Hisoblash uchun raqamlar topilmadi, masalan: '25 + 17 ni hisobla' deb ayting.")
+        return
+    kalkulyator(ifoda)
+
+
+def _h_foiz(matn):
+    sonlar = re.findall(r"\d+(?:\.\d+)?", matn)
+    if len(sonlar) >= 2:
+        foiz_hisoblash(float(sonlar[0]), float(sonlar[1]))
+    else:
+        gapir("Masalan: '200 ning 15 foizini hisobla' deb ayting.")
+
+
+def _h_talaffuz(matn):
+    soz = parametrni_olish(matn, ["harflab ayt", "talaffuz qil", "qanday yoziladi"])
+    soz_talaffuz_qilish(soz)
+
+
+def _h_km_milya(matn):
+    son = sonni_topish(matn)
+    if son is None:
+        gapir("Necha kilometrligini ayting, masalan: '10 km dan milyaga' deb ayting.")
+        return
+    km_dan_milga(son)
+
+
+def _h_milya_km(matn):
+    son = sonni_topish(matn)
+    if son is None:
+        gapir("Necha milyaligini ayting.")
+        return
+    mil_dan_kmga(son)
+
+
+def _h_kg_funt(matn):
+    son = sonni_topish(matn)
+    if son is None:
+        gapir("Necha kilogramligini ayting.")
+        return
+    kg_dan_funtga(son)
+
+
+def _h_funt_kg(matn):
+    son = sonni_topish(matn)
+    if son is None:
+        gapir("Necha funtligini ayting.")
+        return
+    funt_dan_kgga(son)
+
+
+def _h_selsiy_farengeyt(matn):
+    son = sonni_topish(matn)
+    if son is None:
+        gapir("Necha gradus Selsiyligini ayting.")
+        return
+    celsiy_dan_farengeytga(son)
+
+
+def _h_farengeyt_selsiy(matn):
+    son = sonni_topish(matn)
+    if son is None:
+        gapir("Necha gradus Farengeytligini ayting.")
+        return
+    farengeyt_dan_celsiyga(son)
+
+
+def _h_metr_fut(matn):
+    son = sonni_topish(matn)
+    if son is None:
+        gapir("Necha metrligini ayting.")
+        return
+    metr_dan_futga(son)
+
+
+def _h_fut_metr(matn):
+    son = sonni_topish(matn)
+    if son is None:
+        gapir("Necha futligini ayting.")
+        return
+    fut_dan_metrga(son)
+
+
+def _h_ovoz_ochirish(matn):
+    ovozni_ochirish()
+
+
+def _h_ovoz_yoqish(matn):
+    ovozni_yoqish()
+
+
+def _h_yordam(matn):
+    gapir(
+        "Men quyidagilarni qila olaman: vaqt va sanani aytish, Google, "
+        "YouTube va Vikipediyadan qidirish, ob-havo va valyuta kursini "
+        "aytish, fayl yuklash, papka va dasturlarni ochish, RAM va "
+        "batareya holatini ko'rsatish, eslatma va vazifalar ro'yxatini "
+        "yuritish, hisob-kitob qilish, hazil aytish va boshqa ko'plab "
+        "narsalar. To'liq buyruqlar ro'yxati uchun README faylini o'qing."
+    )
+
+
+def _h_xayr(matn):
+    gapir("Xayr! Kerak bo'lsam, yana chaqiring.")
+    return False
+
+# ------------- Buyruqlar ro'yxati: kalit so'z(lar) -> handler -------------
+# Tartib muhim: yuqorida turgan band birinchi mos kelganda ishlatiladi.
+# Shu sababli aniqroq/maxsus iboralar (masalan "ob havo") umumiyroq
+# iboralardan ("qidir") oldin turishi kerak.
+
+BUYRUQLAR_ROYXATI = [
+    (["xayr", "to'xta", "ishni tugat"], _h_xayr),
+    (["ha o'chir"], _h_ochirish_tasdiq),
+    (["ha qayta yukla"], _h_qayta_yuklash_tasdiq),
+    (["kompyuterni o'chir"], _h_ochirish),
+    (["kompyuterni qayta yukla", "restart qil"], _h_qayta_yuklash),
+    (["ekranni qulfla"], _h_qulflash),
+    (["salom", "assalomu"], _h_salom),
+    (["kim san", "sen kim", "ismi nima"], _h_kim_san),
+    (["soat necha", "vaqtni ayt"], _h_vaqt),
+    (["bugun nechta", "sanani ayt", "bugungi sana"], _h_sana),
+    (["haftaning qaysi kuni", "qaysi kun"], _h_hafta_kuni),
+    (["qaysi fasl", "fasl"], _h_fasl),
+    (["gacha necha kun", "qolgan kun"], _h_kungacha),
+    (["necha yoshda", "yoshimni hisobla"], _h_yosh),
+    (["wikipedia", "vikipediya"], _h_wikipedia),
+    (["youtube"], _h_youtube),
+    (["xaritada", "xarita"], _h_xarita),
+    (["ob havo", "ob-havo"], _h_obhavo),
+    (["valyuta", "kursi"], _h_valyuta),
+    (["ip manzil", "mening ip"], _h_ip),
+    (["internet bormi", "internet holati"], _h_internet_holati),
+    (["sayt och", "saytni och"], _h_sayt),
+    (["qidir"], _h_google),
+    (["yukla"], _h_yuklash),
+    (["papka", "yuklamalar"], _h_papka),
+    (["fayllar royxati", "fayllarni korsat"], _h_fayllar_royxati),
+    (["tizim malumoti", "tizim haqida"], _h_tizim),
+    (["ram", "xotira holati"], _h_ram),
+    (["protsessor", "cpu"], _h_cpu),
+    (["disk", "bosh joy"], _h_disk),
+    (["batareya"], _h_batareya),
+    (["skrinshot", "ekran rasmi"], _h_skrinshot),
+    (["clipboardga nusxala", "buferga nusxala"], _h_clipboard_yoz),
+    (["clipboarddan oqi", "buferni korsat"], _h_clipboard_oqi),
+    (["dasturini och", "dastur och"], _h_dastur_ochish),
+    (["dasturini yop", "dastur yop"], _h_dastur_yopish),
+    (["eslatma qosh", "eslatib qoy"], _h_eslatma_qoshish),
+    (["eslatmalarni korsat", "eslatmalarim"], _h_eslatmalar),
+    (["eslatmani ochir"], _h_eslatma_ochirish),
+    (["vazifa qosh"], _h_vazifa_qoshish),
+    (["vazifalarni korsat", "vazifalarim"], _h_vazifalar),
+    (["vazifani bajardim", "bajarildi deb belgila"], _h_vazifa_bajarildi),
+    (["kundalikka yoz"], _h_kundalik_yoz),
+    (["kundalikni oqi", "kundalik korsat"], _h_kundalik_oqi),
+    (["hazil"], _h_hazil),
+    (["iqtibos"], _h_iqtibos),
+    (["maqol"], _h_maqol),
+    (["tanga ot"], _h_tanga),
+    (["zar ot"], _h_zar),
+    (["tasodifiy son"], _h_tasodifiy_son),
+    (["tosh", "qaychi", "qog'oz"], _h_tqq),
+    (["foizini hisobla"], _h_foiz),
+    (["km dan milya", "kilometrdan milya"], _h_km_milya),
+    (["milyadan km", "milyadan kilometr"], _h_milya_km),
+    (["kg dan funt", "kilogrammdan funt"], _h_kg_funt),
+    (["funtdan kg", "funtdan kilogramm"], _h_funt_kg),
+    (["selsiydan farengeyt"], _h_selsiy_farengeyt),
+    (["farengeytdan selsiy"], _h_farengeyt_selsiy),
+    (["metrdan fut"], _h_metr_fut),
+    (["futdan metr"], _h_fut_metr),
+    (["hisobla", "necha boladi", "necha bo'ladi"], _h_kalkulyator),
+    (["harflab ayt", "qanday yoziladi"], _h_talaffuz),
+    (["ovozni ochir"], _h_ovoz_ochirish),
+    (["ovozni yoq"], _h_ovoz_yoqish),
+    (["yordam", "nima qila olasan"], _h_yordam),
+]
+
+
+def buyruqni_bajar(matn):
+    """Foydalanuvchi buyrug'ini tahlil qilib, mos handlerni chaqiradi.
+    Dasturni davom ettirish kerak bo'lsa True, to'xtatish kerak bo'lsa
+    False qaytaradi."""
+    if matn is None:
+        return True
+    matn = matn.strip().lower()
+    if not matn:
+        return True
+
+    for kalit_sozlar, handler in BUYRUQLAR_ROYXATI:
+        if any(kalit in matn for kalit in kalit_sozlar):
+            natija = handler(matn)
+            return natija if natija is not None else True
+
+    gapir("Kechirasiz, bu buyruqni tushunmadim. 'Yordam' deb ayting, men nima qila olishimni aytib beraman.")
+    return True
+
+
+# ======================================================================
+# 10-QISM: DASTURNI ISHGA TUSHIRISH (MAIN)
+# ======================================================================
+
+def banner_korsatish():
+    """Dastur ishga tushganda ekranga chiqadigan boshlang'ich
+    ma'lumotlarni va halol ogohlantirishlarni ko'rsatadi."""
+    print("=" * 64)
+    print(f"   {ASSISTANT_NAME} — o'zbek tilida ishlaydigan virtual yordamchi")
+    print("=" * 64)
+
+    if not GTTS_BOR:
+        print("[Eslatma] 'gTTS' kutubxonasi topilmadi — ovoz chiqmaydi, faqat matn.")
+        print("          O'rnatish uchun: pip install gTTS")
+    elif OVOZ_TILI != "uz":
+        print("[Eslatma] Google'ning ovoz xizmati hozircha o'zbek tilini to'liq "
+              f"qo'llamayapti, shu sababli ovoz '{ZAXIRA_TIL}' tilida eshittiriladi, "
+              "lekin barcha matnlar va buyruqlar 100% o'zbek tilida.")
+
+    if not OVOZ_TANISH_BOR:
+        print("[Eslatma] 'SpeechRecognition' kutubxonasi topilmadi.")
+        print("          O'rnatish uchun: pip install SpeechRecognition pyaudio")
+    print()
+
+
+def ovoz_rejimi():
+    """Mikrofon orqali doimiy tinglab turadigan rejim."""
+    gapir(f"Salom, men {ASSISTANT_NAME}. Sizni tinglayapman.")
+    while True:
+        buyruq = eshit()
+        if buyruq is None:
+            gapir("Mikrofon topilmadi. Matn rejimiga o'tyapman.")
+            matn_rejimi()
+            return
+        davom_etsinmi = buyruqni_bajar(buyruq)
+        if not davom_etsinmi:
+            break
+
+
+def matn_rejimi():
+    """Mikrofon yo'q yoki ishlamagan hollarda yozib buyruq berish
+    rejimi."""
+    gapir("Matn rejimida ishlayapman. Buyruqni yozib, Enter bosing.")
+    print("(Masalan: 'salom', 'ob havoni qidir', 'papkani och', 'yordam', 'xayr')\n")
+    while True:
+        try:
+            buyruq = input("Siz: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            gapir("Xayr!")
+            break
+        davom_etsinmi = buyruqni_bajar(buyruq)
+        if not davom_etsinmi:
+            break
+
+
+def asosiy():
+    """Dasturning bosh funksiyasi: papkalarni tayyorlaydi, banner
+    ko'rsatadi va ovozli yoki matnli rejimni tanlab ishga tushiradi."""
+    papkalarni_tayyorlash()
+    log_yozish("Dastur ishga tushdi.")
+    banner_korsatish()
+
+    if not OVOZ_TANISH_BOR:
+        matn_rejimi()
+        return
+
+    try:
+        ovoz_rejimi()
+    except Exception as e:
+        print(f"[Ovozli rejimda xato: {e}]")
+        matn_rejimi()
+
+
+if __name__ == "__main__":
+    asosiy()
+
