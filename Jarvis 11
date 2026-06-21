@@ -1,0 +1,83 @@
+# -*- coding: utf-8 -*-
+import openai
+import speech_recognition as sr
+from gtts import gTTS
+from playsound import playsound
+import os
+import time
+
+# ================== CONFIG ==================
+openai.api_key = "YOUR_API_KEY_HERE"
+
+ASSISTANT_NAME = "Jarvis"
+VOICE = True
+
+
+# ================== SPEAK ==================
+def speak(text):
+    print(f"{ASSISTANT_NAME}: {text}")
+
+    if not VOICE:
+        return
+
+    try:
+        tts = gTTS(text=text, lang="ru")
+        file = "voice.mp3"
+        tts.save(file)
+        playsound(file)
+        os.remove(file)
+    except:
+        pass
+
+
+# ================== LISTEN ==================
+def listen():
+    r = sr.Recognizer()
+    try:
+        with sr.Microphone() as source:
+            print("Tinglayapman...")
+            r.adjust_for_ambient_noise(source)
+            audio = r.listen(source, timeout=5, phrase_time_limit=7)
+
+        text = r.recognize_google(audio, language="uz-UZ")
+        print("Siz:", text)
+        return text
+
+    except:
+        return input("Yozing: ")
+
+
+# ================== GPT RESPONSE ==================
+def ask_gpt(prompt):
+    try:
+        response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "Sen Uzbek tilida gapiradigan Jarvis assistantsan."},
+                {"role": "user", "content": prompt}
+            ]
+        )
+        return response["choices"][0]["message"]["content"]
+
+    except Exception as e:
+        return f"Xatolik: {e}"
+
+
+# ================== MAIN ==================
+def main():
+    speak("Jarvis GPT ishga tushdi")
+
+    while True:
+        cmd = listen().lower()
+
+        if cmd in ["exit", "chiqish", "stop"]:
+            speak("Xayr")
+            break
+
+        if cmd:
+            javob = ask_gpt(cmd)
+            speak(javob)
+
+
+if __name__ == "__main__":
+    main()
