@@ -1,0 +1,439 @@
+# config.py
+TOKEN = "8927824159:AAEQWGIwx2C4FcyoCLRIcwOPJkSJkeL0xvw"
+ADMIN_ID = 123456789
+
+CARD = "4231200080982977"
+
+MAX_ENERGY = 100
+
+COIN_IMAGE = "images/lion.png"
+# database.py
+import sqlite3
+
+db = sqlite3.connect("onlycoin.db", check_same_thread=False)
+sql = db.cursor()
+
+sql.execute("""
+CREATE TABLE IF NOT EXISTS users(
+    user_id INTEGER PRIMARY KEY,
+    coins INTEGER DEFAULT 0,
+    energy INTEGER DEFAULT 100,
+    boost INTEGER DEFAULT 1,
+    ref INTEGER DEFAULT 0
+)
+""")
+
+db.commit()# requirements.txt
+aiogram==3.7.0
+aiosqlite# bot.py
+import asyncio
+
+from aiogram import Bot, Dispatcher
+from aiogram.enums import ParseMode
+from aiogram.client.default import DefaultBotProperties
+
+from config import TOKEN
+
+bot = Bot(
+    TOKEN,
+    default=DefaultBotProperties(parse_mode=ParseMode.HTML)
+)
+
+dp = Dispatcher()
+
+async def main():
+    await dp.start_polling(bot)
+
+if __name__ == "__main__":
+    asyncio.run(main())# handlers/start.py
+from aiogram import Router
+from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton, FSInputFile
+from database import sql, db
+
+router = Router()
+
+menu = ReplyKeyboardMarkup(
+    keyboard=[
+        [KeyboardButton(text="🦁 Coin Bosish")],
+        [KeyboardButton(text="💰 Balans")],
+        [KeyboardButton(text="⚡ Kuchaytirish")]
+    ],
+    resize_keyboard=True
+)
+
+@router.message()
+async def start_handler(message: Message):
+    if message.text == "/start":
+
+        user_id = message.from_user.id
+
+        sql.execute("SELECT user_id FROM users WHERE user_id=?", (user_id,))
+        user = sql.fetchone()
+
+        if not user:
+            sql.execute("INSERT INTO users(user_id) VALUES(?)", (user_id,))
+            db.commit()
+
+        photo = FSInputFile("images/lion.png")
+
+        await message.answer_photo(
+            photo=photo,
+            caption="🦁 ONLY COIN BOT",
+            reply_markup=menu
+        )# handlers/coin.py
+from aiogram import Router, F
+from aiogram.types import Message
+from database import sql, db
+
+router = Router()
+
+@router.message(F.text == "🦁 Coin Bosish")
+async def coin(message: Message):
+
+    user_id = message.from_user.id
+
+    sql.execute("SELECT coins, energy, boost FROM users WHERE user_id=?", (user_id,))
+    data = sql.fetchone()
+
+    coins, energy, boost = data
+
+    if energy <= 0:
+        await message.answer("❌ Energy tugagan")
+        return
+
+    coins += boost
+    energy -= 1
+
+    sql.execute("UPDATE users SET coins=?, energy=? WHERE user_id=?",
+                (coins, energy, user_id))
+    db.commit()
+
+    await message.answer(f"+{boost} coin\n💰 {coins}\n⚡ {energy}")
+# handlers/balance.py
+from aiogram import Router, F
+from aiogram.types import Message
+from database import sql
+
+router = Router()
+
+@router.message(F.text == "💰 Balans")
+async def balance(message: Message):
+
+    user_id = message.from_user.id
+
+    sql.execute("SELECT coins, energy, boost FROM users WHERE user_id=?", (user_id,))
+    coins, energy, boost = sql.fetchone()
+
+    await message.answer(
+        f"💰 Coin: {coins}\n⚡ Energy: {energy}\n🚀 Boost: x{boost}"
+    )
+# handlers/boost.py
+from aiogram import Router, F
+from aiogram.types import Message
+from database import sql, db
+
+router = Router()
+
+@router.message(F.text == "⚡ Kuchaytirish")
+async def boost(message: Message):
+
+    await message.answer(
+        "🚀 BOOST:\n"
+        "x2 = 1$\n"
+        "x4 = 2$\n"
+        "x6 = 3$\n"
+        "x8 = 4$\n"
+        "x10 = 5$\n"
+        "50$ gacha mavjud"
+    )# utils/energy.py
+import asyncio
+from database import sql, db
+
+async def reset_energy():
+    while True:
+        sql.execute("UPDATE users SET energy=100")
+        db.commit()
+        await asyncio.sleep(86400)# handlers/coin_image.py
+from aiogram import Router, F
+from aiogram.types import Message, FSInputFile
+from database import sql, db
+
+router = Router()
+
+@router.message(F.text == "🦁 Coin Bosish")
+async def coin_img(message: Message):
+
+    user_id = message.from_user.id
+
+    sql.execute("SELECT coins, energy, boost FROM users WHERE user_id=?", (user_id,))
+    coins, energy, boost = sql.fetchone()
+
+    if energy <= 0:
+        return await message.answer("❌ Energy tugagan")
+
+    coins += boost
+    energy -= 1
+
+    sql.execute("UPDATE users SET coins=?, energy=? WHERE user_id=?",
+                (coins, energy, user_id))
+    db.commit()
+
+    photo = FSInputFile("images/lion.png")
+
+    await message.answer_photo(
+        photo=photo,
+        caption=f"+{boost} ONLY COIN\n💰 {coins}\n⚡ {energy}"
+    )
+# handlers/menu.py
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
+
+menu = ReplyKeyboardMarkup(
+    keyboard=[
+        [KeyboardButton(text="🦁 Coin Bosish")],
+        [KeyboardButton(text="💰 Balans")],
+        [KeyboardButton(text="⚡ Kuchaytirish")],
+        [KeyboardButton(text="📢 Obunalar")]
+    ],
+    resize_keyboard=True
+)
+# handlers/subscribe.py
+from aiogram import Router, F
+from aiogram.types import Message
+
+router = Router()
+
+CHANNELS = [
+    "https://t.me/onlycoin1",
+    "https://t.me/onlycoin2"
+]
+
+@router.message(F.text == "📢 Obunalar")
+async def subs(message: Message):
+
+    text = "📢 Obuna bo‘ling:\n\n"
+    for c in CHANNELS:
+        text += f"{c}\n"
+
+    await message.answer(text)# utils/channels.py
+from aiogram import Bot
+
+CHANNELS = [
+    "@onlycoin1",
+    "@onlycoin2"
+]
+
+async def check_sub(bot: Bot, user_id: int):
+    for ch in CHANNELS:
+        member = await bot.get_chat_member(chat_id=ch, user_id=user_id)
+        if member.status in ["left", "kicked"]:
+            return False
+    return True# handlers/subscribe_check.py
+from aiogram import Router, F
+from aiogram.types import Message
+from utils.channels import check_sub
+from bot import bot
+
+router = Router()
+
+@router.message(F.text == "🦁 Coin Bosish")
+async def sub_required(message: Message):
+    user_id = message.from_user.id
+
+    ok = await check_sub(bot, user_id)
+
+    if not ok:
+        return await message.answer("❌ Avval kanallarga obuna bo‘ling")
+
+    await message.answer("✅ Obuna tasdiqlandi")# utils/referral.py
+from database import sql, db
+
+def add_ref(ref_id, new_user):
+    sql.execute("SELECT ref FROM users WHERE user_id=?", (new_user,))
+    if sql.fetchone()[0] == 0:
+        sql.execute("UPDATE users SET ref=? WHERE user_id=?", (ref_id, new_user))
+        sql.execute("UPDATE users SET coins = coins + 10 WHERE user_id=?", (ref_id,))
+        db.commit()# handlers/referral.py
+from aiogram import Router, F
+from aiogram.types import Message
+
+router = Router()
+
+@router.message(F.text == "👥 Referral")
+async def ref(message: Message):
+
+    link = f"https://t.me/yourbot?start={message.from_user.id}"
+
+    await message.answer(f"👥 Sizning link:\n{link}")
+# handlers/wheel.py
+import random
+from aiogram import Router, F
+from aiogram.types import Message
+from database import sql, db
+
+router = Router()
+
+@router.message(F.text == "🎰 Baraban")
+async def wheel(message: Message):
+
+    user_id = message.from_user.id
+
+    rewards = [0,1,2,3,5,10,20]
+
+    win = random.choice(rewards)
+
+    sql.execute("UPDATE users SET coins = coins + ? WHERE user_id=?", (win, user_id))
+    db.commit()
+
+    await message.answer(f"🎰 Siz yutdingiz: +{win} coin")# handlers/wallet.py
+from aiogram import Router, F
+from aiogram.types import Message
+from database import sql, db
+
+router = Router()
+
+@router.message(F.text == "👛 Hamyon")
+async def wallet(message: Message):
+
+    user_id = message.from_user.id
+
+    sql.execute("SELECT coins FROM users WHERE user_id=?", (user_id,))
+    coins = sql.fetchone()[0]
+
+    await message.answer(
+        f"👛 Hamyon\n💰 {coins} coin"
+    )# handlers/withdraw.py
+from aiogram import Router, F
+from aiogram.types import Message
+from config import ADMIN_ID
+
+router = Router()
+
+@router.message(F.text == "💸 Yechish")
+async def withdraw(message: Message):
+
+    await message.answer(
+        "💸 Yechish uchun admin tasdiqlaydi\n"
+        "Minimal: 1000 coin"
+    )
+# handlers/admin.py
+from aiogram import Router, F
+from aiogram.types import Message
+from config import ADMIN_ID
+from database import sql, db
+
+router = Router()
+
+@router.message(F.text.startswith("/pay"))
+async def pay(message: Message):
+
+    if message.from_user.id != ADMIN_ID:
+        return
+
+    _, user_id, amount = message.text.split()
+
+    sql.execute(
+        "UPDATE users SET coins = coins + ? WHERE user_id=?",
+        (int(amount), int(user_id))
+    )
+    db.commit()
+
+    await message.answer("OK")
+# handlers/stats.py
+from aiogram import Router, F
+from aiogram.types import Message
+from database import sql
+
+router = Router()
+
+@router.message(F.text == "📊 Statistika")
+async def stats(message: Message):
+
+    sql.execute("SELECT COUNT(*) FROM users")
+    users = sql.fetchone()[0]
+
+    await message.answer(f"👥 Users: {users}")
+# utils/energy_reset.py
+import asyncio
+from database import sql, db
+
+async def energy_loop():
+
+    while True:
+        sql.execute("UPDATE users SET energy=100")
+        db.commit()
+        await asyncio.sleep(86400)# handlers/settings.py
+from aiogram import Router, F
+from aiogram.types import Message
+
+router = Router()
+
+@router.message(F.text == "⚙️ Sozlamalar")
+async def settings(message: Message):
+
+    await message.answer(
+        "⚙️ Sozlamalar\n"
+        "- Til\n"
+        "- Bildirishnoma"
+    )# handlers/top.py
+from aiogram import Router, F
+from aiogram.types import Message
+from database import sql
+
+router = Router()
+
+@router.message(F.text == "🏆 Top")
+async def top(message: Message):
+
+    sql.execute("SELECT user_id, coins FROM users ORDER BY coins DESC LIMIT 5")
+    rows = sql.fetchall()
+
+    text = "🏆 TOP USERS\n\n"
+    for i, r in enumerate(rows, 1):
+        text += f"{i}. {r[0]} - {r[1]}\n"
+
+    await message.answer(text)# utils/security.py
+from database import sql
+
+def anti_cheat(user_id):
+    sql.execute("SELECT energy FROM users WHERE user_id=?", (user_id,))
+    energy = sql.fetchone()[0]
+    return energy > 0# handlers/start_fix.py
+from aiogram import Router
+from aiogram.types import Message
+from database import sql, db
+
+router = Router()
+
+@router.message()
+async def start_fix(message: Message):
+
+    if message.text == "/start":
+
+        user_id = message.from_user.id
+
+        sql.execute("SELECT user_id FROM users WHERE user_id=?", (user_id,))
+        if not sql.fetchone():
+            sql.execute("INSERT INTO users(user_id) VALUES(?)", (user_id,))
+            db.commit()
+
+        await message.answer("🦁 Only Coin ishga tushdi")
+# bot_final.py
+import asyncio
+from aiogram import Dispatcher
+from bot import bot, dp
+
+from handlers import start, coin, balance, boost, wheel, wallet
+
+async def main():
+
+    dp.include_router(start.router)
+    dp.include_router(coin.router)
+    dp.include_router(balance.router)
+    dp.include_router(boost.router)
+    dp.include_router(wheel.router)
+    dp.include_router(wallet.router)
+
+    await dp.start_polling(bot)
+
+if __name__ == "__main__":
+    asyncio.run(main())
